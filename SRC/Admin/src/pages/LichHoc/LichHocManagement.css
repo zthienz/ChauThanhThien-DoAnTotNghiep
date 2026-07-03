@@ -10,6 +10,16 @@
 /* ── Trang lịch học ── */
 .lich-page { display: flex; flex-direction: column; gap: 16px; }
 
+/* Tiêu đề phân đoạn */
+.lich-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1a202c;
+  padding: 6px 0 4px;
+  border-bottom: 2px solid #e2e8f0;
+  margin-bottom: 4px;
+}
+
 /* Toolbar */
 .lich-toolbar {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;

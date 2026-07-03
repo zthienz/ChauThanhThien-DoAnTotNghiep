@@ -46,7 +46,7 @@ class XeController extends Controller
         $request->validate([
             'bien_so'    => 'required|string|max:20|unique:xe,bien_so',
             'hang_xe'    => 'required|string|max:50',
-            'hang_bang'  => 'required|in:A1,A,B1,B2,C1,C,D,E,CE',
+            'hang_bang'  => 'required|in:A1,A,B1,B2,C1,C,C2,D,E,CE',
             'loai_xe'    => 'required|in:so_san,so_tu_dong',
             'anh_xe'     => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
         ]);
@@ -254,7 +254,7 @@ class XeController extends Controller
 
         if (!$gv) return response()->json(['success' => true, 'data' => []]);
 
-        // Lấy tất cả lớp học mà giảng viên này là giảng viên thực hành
+        // Lấy tất cả lớp học mà giảng viên này dạy (lý thuyết hoặc thực hành)
         $lopList = LopHoc::with([
                 'khoaHoc',
                 'xeLop.xe',   // xe gán qua bảng xe_lop_hoc

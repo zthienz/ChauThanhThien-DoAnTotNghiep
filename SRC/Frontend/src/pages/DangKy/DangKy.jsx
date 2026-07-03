@@ -6,14 +6,6 @@ import './DangKy.css'
 
 const API = 'http://localhost:8000/api'
 
-// Tuổi tối thiểu theo hạng bằng lái
-const TUOI_TOI_THIEU = {
-  A1: 18, A: 18,
-  B1: 18, B2: 18,
-  C1: 21, C: 21,
-  D: 24, E: 27, CE: 27,
-}
-
 // Tính tuổi chính xác theo ngày sinh
 const tinhTuoi = (ngaySinh) => {
   if (!ngaySinh) return null
@@ -81,11 +73,11 @@ const DangKy = () => {
     if (form.email && !/^[a-zA-Z0-9._%+\-]+@gmail\.com$/.test(form.email))
       errs.email = 'Email phải có định dạng @gmail.com'
 
-    // Kiểm tra tuổi tối thiểu theo hạng bằng
+    // Kiểm tra tuổi tối thiểu theo hạng bằng (lấy từ DB)
     if (form.ngay_sinh && form.khoa_hoc_id) {
       const khoa = khoaList.find(k => String(k.id) === String(form.khoa_hoc_id))
       if (khoa) {
-        const tuoiMin = TUOI_TOI_THIEU[khoa.loai_bang]
+        const tuoiMin = khoa.tuoi_toi_thieu
         if (tuoiMin) {
           const tuoi = tinhTuoi(form.ngay_sinh)
           if (tuoi !== null && tuoi < tuoiMin) {
@@ -126,9 +118,9 @@ const DangKy = () => {
     }
   }
 
-  // Tính cảnh báo tuổi realtime
+  // Tính cảnh báo tuổi realtime (dùng tuoi_toi_thieu từ DB)
   const selectedKhoa = khoaList.find(k => String(k.id) === String(form.khoa_hoc_id))
-  const tuoiMin      = selectedKhoa ? TUOI_TOI_THIEU[selectedKhoa.loai_bang] : null
+  const tuoiMin      = selectedKhoa?.tuoi_toi_thieu ?? null
   const tuoiHienTai  = form.ngay_sinh ? tinhTuoi(form.ngay_sinh) : null
   const chuaDuTuoi   = tuoiMin && tuoiHienTai !== null && tuoiHienTai < tuoiMin
 
@@ -277,7 +269,7 @@ const DangKy = () => {
                   <div className="radio-grid">
                     {khoaList.length > 0
                       ? khoaList.map(kh => {
-                          const tm = TUOI_TOI_THIEU[kh.loai_bang]
+                          const tm = kh.tuoi_toi_thieu
                           const chuaDu = tm && tuoiHienTai !== null && tuoiHienTai < tm
                           return (
                             <label key={kh.id}

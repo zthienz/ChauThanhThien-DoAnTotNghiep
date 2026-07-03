@@ -42,15 +42,15 @@ class HocVienLop extends Model
         // Nếu không tìm được hoặc lớp đã thuộc khóa danh mục → dùng chính nó
         $khoa = $khoaNguong ?? $lopKhoa;
 
-        $duLyThuyet = $this->so_buoi_ly_thuyet_da_hoc >= $khoa->so_buoi_ly_thuyet_toi_thieu;
+        // Nếu so_buoi_ly_thuyet_toi_thieu = 0 → hạng bằng không cần học lý thuyết → luôn đủ
+        $duLyThuyet = ($khoa->so_buoi_ly_thuyet_toi_thieu == 0)
+            ? true
+            : $this->so_buoi_ly_thuyet_da_hoc >= $khoa->so_buoi_ly_thuyet_toi_thieu;
 
-        // Bằng A1 và A: chỉ học lý thuyết, không cần km thực hành
-        $hangKhongCanKm = ['A1', 'A'];
-        if (in_array($lopKhoa->loai_bang, $hangKhongCanKm)) {
-            $duKm       = true; // luôn đủ điều kiện km
-        } else {
-            $duKm       = $this->so_km_da_chay >= $khoa->so_km_toi_thieu;
-        }
+        // Nếu so_km_toi_thieu = 0 → hạng bằng không cần thực hành km → luôn đủ
+        $duKm = ($khoa->so_km_toi_thieu == 0)
+            ? true
+            : $this->so_km_da_chay >= $khoa->so_km_toi_thieu;
 
         $duDieuKien = $duLyThuyet && $duKm;
 

@@ -7,6 +7,8 @@ use App\Models\KetQuaThi;
 use App\Models\LichThi;
 use App\Models\BangTotNghiep;
 use App\Models\BangLaiXe;
+use App\Models\KhoaHoc;
+use App\Models\BaiThi;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
@@ -47,22 +49,73 @@ class CapBangController extends Controller
         // Tất cả trạng thái từ hoan_thanh_tn trở đi (đã đậu TN)
         $trangThaiDauTN = ['hoan_thanh_tn', 'du_dieu_kien_sat_hanh', 'dang_thi_sat_hanh', 'dau_sat_hanh', 'da_cap_bang'];
 
+        // ── Tính tập ho_so_id thực sự đậu TN (tổng hợp kết quả mới nhất mỗi bài qua tất cả lịch) ──
+        $lichThiTN = LichThi::where('loai_thi', 'tot_nghiep')
+            ->with('khoaHoc:id,loai_bang')
+            ->get();
+
+        $hoSoDaDauTNThucSu = collect();
+        $lichTheoHang = $lichThiTN->groupBy(fn($lt) => $lt->khoaHoc?->loai_bang);
+
+        foreach ($lichTheoHang as $loaiBang => $danhSachLich) {
+            if (!$loaiBang) continue;
+
+            $lichIds = $danhSachLich->pluck('id');
+
+            // Số bài TN cần đạt cho hạng này (từ khóa danh mục không có ma_khoa)
+            $khoaDM  = KhoaHoc::where('loai_bang', $loaiBang)->whereNull('ma_khoa')->first();
+            $baiThiIds = $khoaDM
+                ? BaiThi::where('khoa_hoc_id', $khoaDM->id)->where('loai', 'tot_nghiep')->pluck('id')
+                : collect();
+            $soBaiTN = $baiThiIds->count();
+
+            if ($soBaiTN === 0) continue;
+
+            // Lấy tất cả KQ (kể cả không đạt) để tính kết quả mới nhất mỗi bài
+            $kqAll = KetQuaThi::whereIn('lich_thi_id', $lichIds)
+                ->whereIn('bai_thi_id', $baiThiIds)
+                ->whereNotNull('ket_qua')
+                ->select('ho_so_id', 'bai_thi_id', 'ket_qua', 'lich_thi_id')
+                ->get()
+                ->groupBy('ho_so_id');
+
+            foreach ($kqAll as $hoSoId => $rows) {
+                // Với mỗi bài: lấy kết quả từ lịch thi có id lớn nhất (mới nhất)
+                $ketQuaMoiNhat = $rows->groupBy('bai_thi_id')->map(function ($baiRows) {
+                    return $baiRows->sortByDesc('lich_thi_id')->first();
+                });
+                // Đếm số bài có kết quả mới nhất là 'dat'
+                $soBaiDat = $ketQuaMoiNhat->filter(fn($kq) => $kq->ket_qua === 'dat')->count();
+                if ($soBaiDat >= $soBaiTN) {
+                    $hoSoDaDauTNThucSu->push($hoSoId);
+                }
+            }
+        }
+
+        $hoSoDaDauTNThucSu = $hoSoDaDauTNThucSu->unique()->values();
+        // ─────────────────────────────────────────────────────────────────────
+
         $query = HoSoHocVien::with([
                 'khoaHoc',
                 'bangTotNghiep',
                 'ketQuaThi' => fn($q) => $q->with(['lichThi', 'baiThi'])
                                            ->whereHas('lichThi', fn($q2) => $q2->where('loai_thi', 'tot_nghiep')),
             ])
-            ->where(function ($q) use ($trangThaiDauTN) {
-                // Lấy học viên đang ở trạng thái đã đậu TN
-                $q->whereIn('trang_thai', $trangThaiDauTN)
-                  // HOẶC đã có bằng TN (phòng trường hợp trạng thái bị lệch)
-                  ->orWhereHas('bangTotNghiep');
+            ->where(function ($q) use ($trangThaiDauTN, $hoSoDaDauTNThucSu) {
+                // Phải ở trạng thái đã đậu TN VÀ có kết quả thi thực sự đạt
+                $q->where(function ($inner) use ($trangThaiDauTN, $hoSoDaDauTNThucSu) {
+                    $inner->whereIn('trang_thai', $trangThaiDauTN)
+                          ->whereIn('id', $hoSoDaDauTNThucSu);
+                })
+                // HOẶC đã có bằng TN (đã cấp rồi thì vẫn hiển thị để quản lý)
+                ->orWhereHas('bangTotNghiep');
             })
             ->when($search, fn($q) => $q
-                ->where('ho_ten', 'like', "%{$search}%")
-                ->orWhere('so_cccd', 'like', "%{$search}%")
-                ->orWhere('so_dien_thoai', 'like', "%{$search}%")
+                ->where(function ($q2) use ($search) {
+                    $q2->where('ho_ten', 'like', "%{$search}%")
+                       ->orWhere('so_cccd', 'like', "%{$search}%")
+                       ->orWhere('so_dien_thoai', 'like', "%{$search}%");
+                })
             );
 
         // Lọc theo trạng thái bằng
@@ -180,12 +233,50 @@ class CapBangController extends Controller
         $search   = $request->search;
         $filterTT = $request->trang_thai; // cho_cap | da_cap
 
-        // Lấy ho_so_id đã đậu sát hạch (có ít nhất 1 bản ghi dat trong lịch thi sat_hanh)
-        $dauSatHanh = KetQuaThi::join('lich_thi', 'lich_thi.id', '=', 'ket_qua_thi.lich_thi_id')
-            ->where('lich_thi.loai_thi', 'sat_hanh')
-            ->where('ket_qua_thi.ket_qua', 'dat')
-            ->distinct()
-            ->pluck('ket_qua_thi.ho_so_id');
+        // Lấy ho_so_id đã đậu sát hạch thực sự:
+        // Với mỗi bài thi SH, lấy kết quả MỚI NHẤT — nếu tất cả bài đều 'dat' thì mới tính là đậu SH
+        $lichThiSH = LichThi::where('loai_thi', 'sat_hanh')
+            ->with('khoaHoc:id,loai_bang')
+            ->get();
+
+        $hoSoDaDauSHThucSu = collect();
+        $lichTheoHang = $lichThiSH->groupBy(fn($lt) => $lt->khoaHoc?->loai_bang);
+
+        foreach ($lichTheoHang as $loaiBang => $danhSachLich) {
+            if (!$loaiBang) continue;
+
+            $lichIds = $danhSachLich->pluck('id');
+
+            $khoaDM = KhoaHoc::where('loai_bang', $loaiBang)->whereNull('ma_khoa')->first();
+            $baiThiIds = $khoaDM
+                ? BaiThi::where('khoa_hoc_id', $khoaDM->id)->where('loai', 'sat_hanh')->pluck('id')
+                : collect();
+            $soBaiSH = $baiThiIds->count();
+
+            if ($soBaiSH === 0) continue;
+
+            // Lấy tất cả KQ để tính kết quả mới nhất mỗi bài
+            $kqAll = KetQuaThi::whereIn('lich_thi_id', $lichIds)
+                ->whereIn('bai_thi_id', $baiThiIds)
+                ->whereNotNull('ket_qua')
+                ->select('ho_so_id', 'bai_thi_id', 'ket_qua', 'lich_thi_id')
+                ->get()
+                ->groupBy('ho_so_id');
+
+            foreach ($kqAll as $hoSoId => $rows) {
+                // Với mỗi bài: lấy kết quả từ lịch thi có id lớn nhất (mới nhất)
+                $ketQuaMoiNhat = $rows->groupBy('bai_thi_id')->map(function ($baiRows) {
+                    return $baiRows->sortByDesc('lich_thi_id')->first();
+                });
+                // Đếm số bài có kết quả mới nhất là 'dat'
+                $soBaiDat = $ketQuaMoiNhat->filter(fn($kq) => $kq->ket_qua === 'dat')->count();
+                if ($soBaiDat >= $soBaiSH) {
+                    $hoSoDaDauSHThucSu->push($hoSoId);
+                }
+            }
+        }
+
+        $hoSoDaDauSHThucSu = $hoSoDaDauSHThucSu->unique()->values();
 
         $query = HoSoHocVien::with([
                 'khoaHoc',
@@ -193,11 +284,13 @@ class CapBangController extends Controller
                 'ketQuaThi' => fn($q) => $q->with(['lichThi', 'baiThi'])
                                            ->whereHas('lichThi', fn($q2) => $q2->where('loai_thi', 'sat_hanh')),
             ])
-            ->whereIn('id', $dauSatHanh)
+            ->whereIn('id', $hoSoDaDauSHThucSu)
             ->when($search, fn($q) => $q
-                ->where('ho_ten', 'like', "%{$search}%")
-                ->orWhere('so_cccd', 'like', "%{$search}%")
-                ->orWhere('so_dien_thoai', 'like', "%{$search}%")
+                ->where(function ($q2) use ($search) {
+                    $q2->where('ho_ten', 'like', "%{$search}%")
+                       ->orWhere('so_cccd', 'like', "%{$search}%")
+                       ->orWhere('so_dien_thoai', 'like', "%{$search}%");
+                })
             );
 
         if ($filterTT === 'cho_cap') {
@@ -241,11 +334,32 @@ class CapBangController extends Controller
             ], 422);
         }
 
-        $dauSH = KetQuaThi::join('lich_thi', 'lich_thi.id', '=', 'ket_qua_thi.lich_thi_id')
-            ->where('ket_qua_thi.ho_so_id', $hoSoId)
-            ->where('lich_thi.loai_thi', 'sat_hanh')
-            ->where('ket_qua_thi.ket_qua', 'dat')
-            ->exists();
+        // Kiểm tra học viên thực sự đậu SH (kết quả mới nhất mỗi bài đều 'dat')
+        $khoaSH = $hoSo->khoaHoc;
+        $loaiBangSH = $khoaSH?->loai_bang;
+        $khoaDMSH   = $loaiBangSH ? KhoaHoc::where('loai_bang', $loaiBangSH)->whereNull('ma_khoa')->first() : null;
+        $baiThiSHIds = $khoaDMSH
+            ? BaiThi::where('khoa_hoc_id', $khoaDMSH->id)->where('loai', 'sat_hanh')->pluck('id')
+            : collect();
+        $soBaiSHCan = $baiThiSHIds->count();
+
+        $dauSH = false;
+        if ($soBaiSHCan > 0) {
+            $lichSHIds = LichThi::whereHas('khoaHoc', fn($q) => $q->where('loai_bang', $loaiBangSH))
+                ->where('loai_thi', 'sat_hanh')
+                ->pluck('id');
+
+            $kqSH = KetQuaThi::where('ho_so_id', $hoSoId)
+                ->whereIn('lich_thi_id', $lichSHIds)
+                ->whereIn('bai_thi_id', $baiThiSHIds)
+                ->whereNotNull('ket_qua')
+                ->select('bai_thi_id', 'ket_qua', 'lich_thi_id')
+                ->get();
+
+            $ketQuaMoiNhat = $kqSH->groupBy('bai_thi_id')->map(fn($rows) => $rows->sortByDesc('lich_thi_id')->first());
+            $soBaiDat = $ketQuaMoiNhat->filter(fn($kq) => $kq->ket_qua === 'dat')->count();
+            $dauSH = $soBaiDat >= $soBaiSHCan;
+        }
 
         if (!$dauSH) {
             return response()->json([

@@ -4,14 +4,6 @@ import { toast } from 'react-toastify'
 import { useAdmin } from '../../context/AdminContext'
 import './HoSoManagement.css'
 
-// Tuổi tối thiểu theo hạng bằng lái (Luật Giao thông đường bộ Việt Nam)
-const TUOI_TOI_THIEU = {
-  A1: 18, A: 18,
-  B1: 18, B2: 18,
-  C1: 21, C: 21,
-  D: 24, E: 27, CE: 27,
-}
-
 // Tính tuổi chính xác theo ngày (đủ tuổi khi đã qua sinh nhật)
 const tinhTuoi = (ngaySinh) => {
   if (!ngaySinh) return null
@@ -24,11 +16,12 @@ const tinhTuoi = (ngaySinh) => {
 }
 
 // Kiểm tra đủ tuổi: true = đủ, false = chưa đủ, null = chưa nhập đủ thông tin
+// Dùng tuoi_toi_thieu từ DB (do admin cấu hình khi tạo bằng lái)
 const kiemTraTuoi = (ngaySinh, khoaHocId, khoaList) => {
   if (!ngaySinh || !khoaHocId || !khoaList) return null
   const khoa = khoaList.find(k => String(k.id) === String(khoaHocId))
   if (!khoa) return null
-  const tuoiMin = TUOI_TOI_THIEU[khoa.loai_bang]
+  const tuoiMin = khoa.tuoi_toi_thieu
   if (!tuoiMin) return null
   return tinhTuoi(ngaySinh) >= tuoiMin
 }
@@ -170,7 +163,7 @@ const HoSoManagement = () => {
     // Kiểm tra tuổi tối thiểu
     if (kiemTraTuoi(form.ngay_sinh, form.khoa_hoc_id, khoaList) === false) {
       const khoa = khoaList.find(k => String(k.id) === String(form.khoa_hoc_id))
-      const tuoiMin = TUOI_TOI_THIEU[khoa?.loai_bang]
+      const tuoiMin = khoa?.tuoi_toi_thieu
       toast.error(`Học viên chưa đủ ${tuoiMin} tuổi để đăng ký bằng hạng ${khoa?.loai_bang}`)
       return
     }
@@ -586,7 +579,7 @@ const HoSoManagement = () => {
                       {/* Hiển thị yêu cầu tuổi tối thiểu */}
                       {form.khoa_hoc_id && (() => {
                         const khoa = khoaList.find(k => String(k.id) === String(form.khoa_hoc_id))
-                        const tuoiMin = TUOI_TOI_THIEU[khoa?.loai_bang]
+                        const tuoiMin = khoa?.tuoi_toi_thieu
                         if (!tuoiMin) return null
                         return (
                           <span style={{fontSize:12,color:'#6b7280',marginTop:4,display:'block'}}>
@@ -637,7 +630,7 @@ const HoSoManagement = () => {
                         {/* Cảnh báo tuổi */}
                         {kiemTraTuoi(form.ngay_sinh, form.khoa_hoc_id, khoaList) === false && (() => {
                           const khoa = khoaList.find(k => String(k.id) === String(form.khoa_hoc_id))
-                          const tuoiMin = TUOI_TOI_THIEU[khoa?.loai_bang]
+                          const tuoiMin = khoa?.tuoi_toi_thieu
                           const tuoiHienTai = tinhTuoi(form.ngay_sinh)
                           return (
                             <span className="field-error">

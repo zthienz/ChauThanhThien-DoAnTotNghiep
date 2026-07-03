@@ -92,7 +92,7 @@ const KhoaHocManagement = () => {
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                   <div className="form-group"><label>Loại bằng *</label>
                     <select value={form.loai_bang} onChange={e=>setForm({...form,loai_bang:e.target.value})}>
-                      {['A1','A2','B1','B2','C','C1','D','E'].map(b => <option key={b} value={b}>Hạng {b}</option>)}
+                      {['A1','A','B1','B2','C1','C','C2','D','E','CE'].map(b => <option key={b} value={b}>Hạng {b}</option>)}
                     </select>
                   </div>
                   <div className="form-group"><label>Học phí (VNĐ) *</label><input type="number" value={form.hoc_phi} onChange={e=>setForm({...form,hoc_phi:e.target.value})} required /></div>

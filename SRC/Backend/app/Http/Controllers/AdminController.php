@@ -491,21 +491,14 @@ class AdminController extends Controller
             // Cùng người → cho phép đăng ký thêm khóa học (tiếp tục)
         }
 
-        // ── Kiểm tra tuổi tối thiểu theo hạng bằng ──────────────────────────
-        $tuoiToiThieu = [
-            'A1' => 18, 'A'  => 18,
-            'B1' => 18, 'B2' => 18,
-            'C1' => 21, 'C'  => 21,
-            'D'  => 24, 'E'  => 27, 'CE' => 27,
-        ];
-
+        // ── Kiểm tra tuổi tối thiểu — lấy từ cấu hình bằng lái ─────────────
         $khoa     = KhoaHoc::findOrFail($request->khoa_hoc_id);
         $loaiBang = $khoa->loai_bang;
 
-        if (isset($tuoiToiThieu[$loaiBang])) {
-            $ngaySinh   = \Carbon\Carbon::parse($request->ngay_sinh);
-            $tuoiHienTai = $ngaySinh->age; // Carbon tính đúng theo ngày sinh nhật
-            $tuoiMin    = $tuoiToiThieu[$loaiBang];
+        if (!empty($khoa->tuoi_toi_thieu)) {
+            $ngaySinh    = \Carbon\Carbon::parse($request->ngay_sinh);
+            $tuoiHienTai = $ngaySinh->age;
+            $tuoiMin     = $khoa->tuoi_toi_thieu;
 
             if ($tuoiHienTai < $tuoiMin) {
                 return response()->json([

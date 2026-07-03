@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import axios from 'axios'
 import { toast } from 'react-toastify'
 import { useAdmin } from '../../context/AdminContext'
@@ -51,13 +51,13 @@ const LichHocManagement = () => {
   const { token, backendUrl } = useAdmin()
   const headers = { Authorization: `Bearer ${token}` }
 
-  const [lichHoc, setLichHoc]   = useState([])
-  const [lopList, setLopList]   = useState([])
-  const [xeList, setXeList]     = useState([])
-  const [xeBanIds, setXeBanIds] = useState([])   // xe_id đang bận trong khung giờ đang chọn
-  const [loading, setLoading]   = useState(true)
-  const [base, setBase]         = useState(new Date())
-  const [filterLop, setFilterLop] = useState('')
+  const [lichHoc, setLichHoc]       = useState([])
+  const [lopList, setLopList]       = useState([])
+  const [xeList, setXeList]         = useState([])
+  const [xeBanIds, setXeBanIds]     = useState([])   // xe_id đang bận trong khung giờ đang chọn
+  const [loading, setLoading]       = useState(true)
+  const [base, setBase]             = useState(new Date())
+  const [filterLop, setFilterLop]   = useState('')
 
   // Modals
   const [showModal, setShowModal]             = useState(false)
@@ -246,9 +246,11 @@ const LichHocManagement = () => {
     <div className="lich-page">
       {/* Header */}
       <div className="page-header">
-        <div><h2>📅 Lịch Học</h2><p>Thời khóa biểu theo tuần</p></div>
+        <div><h2>📅 Lịch Học</h2><p>Danh sách & thời khóa biểu tuần {weekDates[0].getDate()}/{weekDates[0].getMonth()+1} – {weekDates[6].getDate()}/{weekDates[6].getMonth()+1}/{weekDates[6].getFullYear()}</p></div>
         <button className="btn btn-primary" onClick={() => openAdd()}>+ Tạo buổi học</button>
       </div>
+
+      {/* Tab chuyển chế độ xem — đã bỏ, 2 dạng hiển thị cùng lúc */}
 
       {/* Toolbar */}
       <div className="lich-toolbar">
@@ -266,11 +268,16 @@ const LichHocManagement = () => {
         </div>
       </div>
 
-      {/* ── DANH SÁCH LỊCH HỌC THEO THỜI GIAN ── */}
+      {/* ── DANH SÁCH LỊCH HỌC THEO TUẦN ── */}
+      <div className="lich-section-title">📋 Danh Sách Buổi Học</div>
       <div className="card">
         <div className="card-header">
-          <h3>📋 Danh Sách Buổi Học Trong Tuần ({lichHoc.length} buổi)</h3>
-          <span style={{fontSize:12,color:'#718096'}}>Sắp xếp theo ngày &amp; giờ</span>
+          <div>
+            <h3 style={{margin:0}}>📋 Danh Sách Buổi Học ({lichHoc.length} buổi)</h3>
+            <p style={{margin:'4px 0 0',fontSize:12,color:'#718096'}}>
+              Thứ 2, {weekDates[0].getDate()}/{weekDates[0].getMonth()+1}/{weekDates[0].getFullYear()} — Chủ nhật, {weekDates[6].getDate()}/{weekDates[6].getMonth()+1}/{weekDates[6].getFullYear()}
+            </p>
+          </div>
         </div>
         <div className="card-body" style={{padding:0}}>
           {loading ? (
@@ -279,88 +286,114 @@ const LichHocManagement = () => {
             <div className="empty-state" style={{padding:'32px'}}>
               <span>📅</span><p>Không có buổi học nào trong tuần này</p>
             </div>
-          ) : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Ngày</th>
-                  <th>Thứ</th>
-                  <th>Giờ</th>
-                  <th>Lớp học</th>
-                  <th>Loại</th>
-                  <th>Địa điểm</th>
-                  <th>Xe</th>
-                  <th>Thao tác</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...lichHoc]
-                  .sort((a, b) => {
-                    const da = a.ngay_hoc + ' ' + (a.gio_bat_dau || '')
-                    const db = b.ngay_hoc + ' ' + (b.gio_bat_dau || '')
-                    return da.localeCompare(db)
-                  })
-                  .map(lh => {
-                    const c = LOAI_COLOR[lh.loai_buoi] || LOAI_COLOR.ly_thuyet
-                    const ngay = new Date(lh.ngay_hoc)
-                    const thu  = DAY_FULL[ngay.getDay()]
-                    const isHN = fmt(ngay) === fmt(new Date())
-                    return (
-                      <tr key={lh.id} style={isHN ? {background:'#fffbeb'} : {}}>
-                        <td>
-                          <strong style={{color: isHN ? '#d97706' : '#1a202c'}}>
-                            {ngay.getDate()}/{ngay.getMonth()+1}/{ngay.getFullYear()}
-                          </strong>
-                          {isHN && <span className="badge badge-warning" style={{marginLeft:6,fontSize:10}}>Hôm nay</span>}
-                        </td>
-                        <td style={{fontSize:12,color:'#718096'}}>{thu}</td>
-                        <td style={{fontWeight:600,fontSize:13,whiteSpace:'nowrap'}}>
-                          {lh.gio_bat_dau?.slice(0,5)} – {lh.gio_ket_thuc?.slice(0,5)}
-                        </td>
-                        <td>
-                          <strong style={{fontSize:13}}>{lh.lop_hoc?.ten_lop}</strong>
-                          {lh.lop_hoc?.khoa_hoc?.ten_khoa && (
-                            <p style={{fontSize:11,color:'#9ca3af',marginTop:1}}>{lh.lop_hoc.khoa_hoc.ten_khoa}</p>
-                          )}
-                        </td>
-                        <td>
-                          <span className="lh-list-badge" style={{background:c.bg,color:c.text,borderLeft:`3px solid ${c.border}`}}>
-                            {c.label}
-                          </span>
-                        </td>
-                        <td style={{fontSize:12,color:'#374151'}}>{lh.dia_diem || '—'}</td>
-                        <td style={{fontSize:12,color:'#059669',fontWeight:600}}>
-                          {lh.loai_buoi === 'thuc_hanh' && lh.xe ? (
-                            ['bao_tri','hong'].includes(lh.xe.trang_thai) ? (
-                              <span title={`Xe ${lh.xe.trang_thai === 'bao_tri' ? 'đang bảo trì' : 'đang hỏng'} — cần đổi xe khác`}
-                                style={{display:'inline-flex',alignItems:'center',gap:4,color:'#dc2626',fontWeight:700,cursor:'help'}}>
-                                ⚠️ {lh.xe.bien_so}
-                                <span style={{fontSize:10,background:'#fee2e2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:4,padding:'1px 5px',fontWeight:600}}>
-                                  {lh.xe.trang_thai === 'bao_tri' ? 'Bảo trì' : 'Hỏng'}
+          ) : (() => {
+            // Nhóm theo từng ngày trong tuần (T2→CN), chỉ hiện ngày có buổi học
+            const groups = weekDates.map(date => ({
+              date,
+              key: fmt(date),
+              items: lichHoc
+                .filter(l => l.ngay_hoc?.slice(0,10) === fmt(date))
+                .sort((a, b) => (a.gio_bat_dau || '').localeCompare(b.gio_bat_dau || ''))
+            })).filter(g => g.items.length > 0)
+
+            if (groups.length === 0) return (
+              <div className="empty-state" style={{padding:'32px'}}>
+                <span>📅</span><p>Không có buổi học nào trong tuần này</p>
+              </div>
+            )
+
+            return (
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Ngày / Thứ</th>
+                    <th>Giờ</th>
+                    <th>Lớp học</th>
+                    <th>Loại</th>
+                    <th>Địa điểm</th>
+                    <th>Xe</th>
+                    <th>Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groups.map(({ date, key, items }) => {
+                    const isHN = fmt(date) === fmt(new Date())
+                    const thu  = DAY_FULL[date.getDay()]
+
+                    return items.map((lh, idx) => {
+                      const c = LOAI_COLOR[lh.loai_buoi] || LOAI_COLOR.ly_thuyet
+                      return (
+                        <tr key={lh.id} style={isHN ? {background:'#fffbeb'} : idx % 2 === 0 ? {background:'#f9fafb'} : {}}>
+                          {idx === 0 ? (
+                            <td rowSpan={items.length}
+                              style={{
+                                verticalAlign:'top',
+                                paddingTop:12,
+                                borderRight:'2px solid #e2e8f0',
+                                background: isHN ? '#fef3c7' : '#f8fafc',
+                                minWidth:110,
+                              }}>
+                              <strong style={{color: isHN ? '#d97706' : '#1a202c', fontSize:14}}>
+                                {date.getDate()}/{date.getMonth()+1}/{date.getFullYear()}
+                              </strong>
+                              <br/>
+                              <span style={{fontSize:12,color:'#718096'}}>{thu}</span>
+                              {isHN && (
+                                <><br/><span className="badge badge-warning" style={{fontSize:10,marginTop:4}}>Hôm nay</span></>
+                              )}
+                            </td>
+                          ) : null}
+                          <td style={{fontWeight:600,fontSize:13,whiteSpace:'nowrap'}}>
+                            {lh.gio_bat_dau?.slice(0,5)} – {lh.gio_ket_thuc?.slice(0,5)}
+                          </td>
+                          <td>
+                            <strong style={{fontSize:13}}>{lh.lop_hoc?.ten_lop}</strong>
+                            {lh.lop_hoc?.khoa_hoc?.ten_khoa && (
+                              <p style={{fontSize:11,color:'#9ca3af',marginTop:1}}>{lh.lop_hoc.khoa_hoc.ten_khoa}</p>
+                            )}
+                          </td>
+                          <td>
+                            <span className="lh-list-badge" style={{background:c.bg,color:c.text,borderLeft:`3px solid ${c.border}`}}>
+                              {c.label}
+                            </span>
+                          </td>
+                          <td style={{fontSize:12,color:'#374151'}}>{lh.dia_diem || '—'}</td>
+                          <td style={{fontSize:12,color:'#059669',fontWeight:600}}>
+                            {lh.loai_buoi === 'thuc_hanh' && lh.xe ? (
+                              ['bao_tri','hong'].includes(lh.xe.trang_thai) ? (
+                                <span title={`Xe ${lh.xe.trang_thai === 'bao_tri' ? 'đang bảo trì' : 'đang hỏng'} — cần đổi xe khác`}
+                                  style={{display:'inline-flex',alignItems:'center',gap:4,color:'#dc2626',fontWeight:700,cursor:'help'}}>
+                                  ⚠️ {lh.xe.bien_so}
+                                  <span style={{fontSize:10,background:'#fee2e2',color:'#dc2626',border:'1px solid #fca5a5',borderRadius:4,padding:'1px 5px',fontWeight:600}}>
+                                    {lh.xe.trang_thai === 'bao_tri' ? 'Bảo trì' : 'Hỏng'}
+                                  </span>
                                 </span>
-                              </span>
-                            ) : (
-                              <span style={{color:'#059669'}}>{lh.xe.bien_so}</span>
-                            )
-                          ) : (lh.xe?.bien_so || '—')}
-                        </td>
-                        <td>
-                          <div className="action-cell">
-                            <button className="btn btn-success btn-sm" onClick={() => openDiemDanh(lh)} title="Điểm danh">✅</button>
-                            <button className="btn btn-outline btn-sm" onClick={() => openEdit(lh)} title="Sửa">✏️</button>
-                            <button className="btn btn-danger btn-sm" onClick={() => handleDelete(lh.id)} title="Xóa">🗑️</button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
+                              ) : (
+                                <span style={{color:'#059669'}}>{lh.xe.bien_so}</span>
+                              )
+                            ) : (lh.xe?.bien_so || '—')}
+                          </td>
+                          <td>
+                            <div className="action-cell">
+                              <button className="btn btn-success btn-sm" onClick={() => openDiemDanh(lh)} title="Điểm danh">✅</button>
+                              <button className="btn btn-outline btn-sm" onClick={() => openEdit(lh)} title="Sửa">✏️</button>
+                              <button className="btn btn-danger btn-sm" onClick={() => handleDelete(lh.id)} title="Xóa">🗑️</button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })
                   })}
-              </tbody>
-            </table>
-          )}
+                </tbody>
+              </table>
+            )
+          })()}
         </div>
       </div>
 
       {/* ── THỜI KHÓA BIỂU ── */}
+      <div>
+      <div className="lich-section-title">🗓️ Thời Khóa Biểu Theo Tuần</div>
       <div className="timetable-wrap">
         <div className="timetable">
           {/* Header: cột giờ + 7 ngày */}
@@ -445,6 +478,7 @@ const LichHocManagement = () => {
         <span className="tt-legend-item" style={{borderLeft:'3px solid #3b82f6',background:'#dbeafe'}}>📖 Lý thuyết</span>
         <span className="tt-legend-item" style={{borderLeft:'3px solid #22c55e',background:'#dcfce7'}}>🚗 Thực hành</span>
         <span style={{fontSize:12,color:'#9ca3af'}}>Nhấn vào buổi học để xem chi tiết</span>
+      </div>
       </div>
 
       {/* ── MODAL TẠO / SỬA ── */}

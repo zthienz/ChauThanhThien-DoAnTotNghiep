@@ -58,6 +58,24 @@ const HocPhiManagement = () => {
     finally { setLoading(false) }
   }
 
+  const handleDelete = async (item) => {
+    const loai   = item._loai === 'phi_thi_lai' ? 'phí thi lại' : 'học phí'
+    const ten    = item.ho_so?.ho_ten || 'học viên này'
+    const soTien = fmtMoney(item.so_tien)
+    if (!confirm(`Xóa giao dịch ${loai} của "${ten}" — ${soTien}?\n\nLưu ý: Hành động này không thể hoàn tác.`)) return
+    try {
+      const endpoint = item._loai === 'phi_thi_lai'
+        ? `${backendUrl}/api/admin/phi-thi-lai/${item.id}`
+        : `${backendUrl}/api/admin/hoc-phi/${item.id}`
+      const res = await axios.delete(endpoint, { headers })
+      if (res.data.success) {
+        toast.success(res.data.message || 'Đã xóa giao dịch')
+        fetchHocPhi()
+        fetchPhiThiLai()
+      } else toast.error(res.data.message)
+    } catch (err) { toast.error(err.response?.data?.message || 'Lỗi xóa giao dịch') }
+  }
+
   const fetchPhiThiLai = async () => {
     setPhiLoading(true)
     try {
@@ -361,7 +379,7 @@ const HocPhiManagement = () => {
               {loading ? <div className="loading-wrap"><div className="spinner"/></div> : (
                 <table className="data-table">
                   <thead>
-                    <tr><th>#</th><th>Học viên</th><th>CCCD</th><th>Khóa / Bài thi</th><th>Bằng Lái</th><th>Số tiền</th><th>Loại tiền</th><th>Phương thức</th><th>Người thu</th><th>Ngày thu</th><th></th></tr>
+                    <tr><th>#</th><th>Học viên</th><th>CCCD</th><th>Khóa / Bài thi</th><th>Bằng Lái</th><th>Số tiền</th><th>Loại tiền</th><th>Phương thức</th><th>Người thu</th><th>Ngày thu</th><th>Thao tác</th></tr>
                   </thead>
                   <tbody>
                     {filteredHP.length === 0 ? (
@@ -405,7 +423,14 @@ const HocPhiManagement = () => {
                           <td><span className={`badge ${pm.cls}`}>{pm.text}</span></td>
                           <td style={{ fontSize:12 }}>{item.nguoi_thu || '—'}</td>
                           <td style={{ fontSize:12 }}>{fmtDate(item.ngay_thanh_toan)}</td>
-                          <td>{!isThiLai && <button className="btn btn-info btn-sm" onClick={() => setViewItem(item)}>👁️</button>}</td>
+                          <td>
+                            <div className="action-cell">
+                              {!isThiLai && (
+                                <button className="btn btn-info btn-sm" onClick={() => setViewItem(item)} title="Xem chi tiết">👁️</button>
+                              )}
+                              <button className="btn btn-danger btn-sm" onClick={() => handleDelete(item)} title="Xóa giao dịch">🗑️</button>
+                            </div>
+                          </td>
                         </tr>
                       )
                     })}

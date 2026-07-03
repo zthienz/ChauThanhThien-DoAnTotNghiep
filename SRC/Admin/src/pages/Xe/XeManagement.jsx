@@ -234,7 +234,7 @@ const XeManagement = () => {
             <select className="search-input" style={{maxWidth:160, borderColor: filterHang ? '#0d47a1' : '', fontWeight: filterHang ? 700 : 400}}
               value={filterHang} onChange={e => setFilterHang(e.target.value)}>
               <option value="">Tất cả hạng</option>
-              {['A1','A','B1','B2','C1','C','D','E','CE'].map(h => <option key={h} value={h}>Hạng {h}</option>)}
+              {['A1','A','B1','B2','C1','C','D','E','CE','C2'].map(h => <option key={h} value={h}>Hạng {h}</option>)}
             </select>
             <select className="search-input" style={{maxWidth:200, borderColor: filterTT ? '#0d47a1' : '', fontWeight: filterTT ? 700 : 400}} value={filterTT} onChange={e=>setFilterTT(e.target.value)}>
               <option value="">Tất cả trạng thái</option>
@@ -283,6 +283,7 @@ const XeManagement = () => {
                           <td>
                             <div className="action-cell">
                               <button className="btn btn-info btn-sm" onClick={() => openDetail(xe)}>👁️ Xem</button>
+                              <button className="btn btn-warning btn-sm" onClick={() => openEdit(xe)}>✏️ Sửa</button>
                               <select className="btn btn-outline btn-sm" style={{padding:'4px 6px',cursor:'pointer'}}
                                 value={xe.trang_thai} onChange={e => handleTrangThai(xe.id, e.target.value)}>
                                 {Object.entries(TRANG_THAI_MAP).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
@@ -408,7 +409,7 @@ const XeManagement = () => {
                       </div>
                       <div className="form-group"><label>Hạng bằng *</label>
                         <select value={form.hang_bang} onChange={e=>setForm({...form,hang_bang:e.target.value})}>
-                          {['A1','A','B1','B2','C1','C','D','E','CE'].map(h => <option key={h} value={h}>Hạng {h}</option>)}
+                          {['A1','A','B1','B2','C1','C','D','E','CE','C2'].map(h => <option key={h} value={h}>Hạng {h}</option>)}
                         </select>
                       </div>
                       <div className="form-group"><label>Màu xe</label>

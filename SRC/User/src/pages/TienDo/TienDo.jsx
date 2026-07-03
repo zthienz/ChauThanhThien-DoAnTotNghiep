@@ -56,8 +56,12 @@ const TienDo = () => {
   }
 
   const dieuKienList = [
-    { label: 'Đủ buổi học lý thuyết', ok: data.du_buoi_ly_thuyet },
-    // Chỉ hiển thị điều kiện km nếu hạng bằng cần thực hành (không phải A1, A)
+    // Chỉ hiển thị điều kiện lý thuyết nếu hạng bằng có yêu cầu lý thuyết
+    ...(data.co_ly_thuyet !== false
+      ? [{ label: 'Đủ buổi học lý thuyết', ok: data.du_buoi_ly_thuyet }]
+      : []
+    ),
+    // Chỉ hiển thị điều kiện km nếu hạng bằng cần thực hành
     ...(data.co_thuc_hanh !== false
       ? [{ label: 'Đủ km thực hành', ok: data.du_km_thuc_hanh }]
       : []
@@ -103,13 +107,16 @@ const TienDo = () => {
           <div className="td-progress-card">
             <h3>📈 Chi Tiết Tiến Độ</h3>
             <div className="td-progress-list">
-              <ProgressBar
-                label="📖 Buổi học lý thuyết"
-                value={data.so_buoi_ly_thuyet_da_hoc}
-                max={data.so_buoi_ly_thuyet_toi_thieu}
-                unit="buổi"
-                color="#3b82f6"
-              />
+              {/* Chỉ hiển thị lý thuyết với bằng có yêu cầu lý thuyết */}
+              {data.co_ly_thuyet !== false && (
+                <ProgressBar
+                  label="📖 Buổi học lý thuyết"
+                  value={data.so_buoi_ly_thuyet_da_hoc}
+                  max={data.so_buoi_ly_thuyet_toi_thieu}
+                  unit="buổi"
+                  color="#3b82f6"
+                />
+              )}
               {/* Chỉ hiển thị km với bằng cần thực hành (B1, B2, C...) */}
               {data.co_thuc_hanh !== false && (
                 <ProgressBar
@@ -129,7 +136,7 @@ const TienDo = () => {
               <span className="tds-icon">📖</span>
               <div>
                 <p>Buổi lý thuyết đã học</p>
-                <h3>{data.so_buoi_ly_thuyet_da_hoc} <small>/ {data.so_buoi_ly_thuyet_toi_thieu} buổi</small></h3>
+                <h3>{data.so_buoi_ly_thuyet_da_hoc} <small>/ {data.so_buoi_ly_thuyet_toi_thieu > 0 ? data.so_buoi_ly_thuyet_toi_thieu + ' buổi' : '—'}</small></h3>
               </div>
             </div>
             {/* Chỉ hiển thị km với bằng cần thực hành */}
@@ -175,7 +182,7 @@ const TienDo = () => {
                 </div>
                 <div className="td-khoa-item">
                   <span>📖 Yêu cầu lý thuyết</span>
-                  <strong>{khoa.so_buoi_ly_thuyet_toi_thieu} buổi</strong>
+                  <strong>{khoa.so_buoi_ly_thuyet_toi_thieu > 0 ? khoa.so_buoi_ly_thuyet_toi_thieu + ' buổi' : 'Không yêu cầu'}</strong>
                 </div>
                 {data.co_thuc_hanh !== false && (
                   <div className="td-khoa-item">

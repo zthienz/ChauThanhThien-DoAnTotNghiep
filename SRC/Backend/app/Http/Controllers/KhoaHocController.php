@@ -58,12 +58,31 @@ class KhoaHocController extends Controller
             'ten_khoa'                    => 'required|string|max:150',
             'loai_bang'                   => 'required|string|max:10',
             'hoc_phi'                     => 'required|numeric|min:0',
-            'so_buoi_ly_thuyet_toi_thieu' => 'required|integer|min:1',
+            'so_buoi_ly_thuyet_toi_thieu' => 'required|integer|min:0',
+            'so_km_toi_thieu'             => 'required|integer|min:0',
             'tuoi_toi_thieu'              => 'nullable|integer|min:1|max:100',
             'tuoi_toi_da'                 => 'nullable|integer|min:1|max:100|gte:tuoi_toi_thieu',
+            'anh'                         => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
         ]);
 
-        $khoaHoc = KhoaHoc::create($request->all());
+        // Bắt buộc ít nhất một trong hai phải > 0
+        if ($request->so_buoi_ly_thuyet_toi_thieu == 0 && $request->so_km_toi_thieu == 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bằng lái phải có ít nhất số buổi lý thuyết hoặc số km thực hành > 0.',
+            ], 422);
+        }
+
+        $data = $request->except('anh');
+
+        if ($request->hasFile('anh')) {
+            $file     = $request->file('anh');
+            $fileName = 'banglai_' . strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $request->loai_bang)) . '_' . time() . '.' . $file->getClientOriginalExtension();
+            $file->move(public_path('uploads/bang_lai'), $fileName);
+            $data['anh'] = 'bang_lai/' . $fileName;
+        }
+
+        $khoaHoc = KhoaHoc::create($data);
         return response()->json(['success' => true, 'message' => 'Tạo khóa học thành công', 'data' => $khoaHoc], 201);
     }
 
@@ -72,14 +91,39 @@ class KhoaHocController extends Controller
     {
         $khoaHoc = KhoaHoc::findOrFail($id);
 
-        if ($request->has('tuoi_toi_thieu') || $request->has('tuoi_toi_da')) {
-            $request->validate([
-                'tuoi_toi_thieu' => 'nullable|integer|min:1|max:100',
-                'tuoi_toi_da'    => 'nullable|integer|min:1|max:100',
-            ]);
+        $request->validate([
+            'so_buoi_ly_thuyet_toi_thieu' => 'sometimes|integer|min:0',
+            'so_km_toi_thieu'             => 'sometimes|integer|min:0',
+            'tuoi_toi_thieu' => 'nullable|integer|min:1|max:100',
+            'tuoi_toi_da'    => 'nullable|integer|min:1|max:100',
+            'anh'            => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
+        ]);
+
+        // Tính giá trị sau khi update để kiểm tra ràng buộc
+        $newBuoi = $request->has('so_buoi_ly_thuyet_toi_thieu')
+            ? (int) $request->so_buoi_ly_thuyet_toi_thieu
+            : $khoaHoc->so_buoi_ly_thuyet_toi_thieu;
+        $newKm   = $request->has('so_km_toi_thieu')
+            ? (int) $request->so_km_toi_thieu
+            : $khoaHoc->so_km_toi_thieu;
+
+        if ($newBuoi == 0 && $newKm == 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bằng lái phải có ít nhất số buổi lý thuyết hoặc số km thực hành > 0.',
+            ], 422);
         }
 
-        $khoaHoc->update($request->all());
+        $data = $request->except('anh');
+
+        if ($request->hasFile('anh')) {
+            $file     = $request->file('anh');
+            $fileName = 'banglai_' . strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $khoaHoc->loai_bang)) . '_' . time() . '.' . $file->getClientOriginalExtension();
+            $file->move(public_path('uploads/bang_lai'), $fileName);
+            $data['anh'] = 'bang_lai/' . $fileName;
+        }
+
+        $khoaHoc->update($data);
         return response()->json(['success' => true, 'message' => 'Cập nhật thành công', 'data' => $khoaHoc]);
     }
 

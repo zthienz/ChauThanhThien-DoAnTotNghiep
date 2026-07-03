@@ -85,6 +85,7 @@ const ThiManagement = () => {
       toast.error('Không tìm thấy khóa học cho hạng bằng này. Vui lòng tạo khóa học trước.')
       return
     }
+
     const payload = { ...form, khoa_hoc_id }
     try {
       const res = editingThi
@@ -132,11 +133,28 @@ const ThiManagement = () => {
       if (res.data.success) {
         // Hiển thị lỗi ngày nộp hồ sơ nếu có học viên bị từ chối
         if (res.data.loi_ngay_nop?.length > 0) {
-          const lichNgay = new Date(selectedLichForHV.ngay_thi).toLocaleDateString('vi-VN')
           res.data.loi_ngay_nop.forEach(err => {
             toast.error(
               `❌ ${err.ho_ten}: Không thể xếp vào lịch thi ngày ${err.ngay_thi} vì học viên nộp hồ sơ ngày ${err.ngay_nop} (sau ngày thi)`,
               { autoClose: 6000 }
+            )
+          })
+        }
+        // Hiển thị lỗi lịch sát hạch trước ngày tốt nghiệp
+        if (res.data.loi_sat_hanh_truoc_tn?.length > 0) {
+          res.data.loi_sat_hanh_truoc_tn.forEach(err => {
+            toast.error(
+              `❌ ${err.ho_ten}: Lịch sát hạch (${err.ngay_sat_hanh}) phải sau ngày đậu tốt nghiệp (${err.ngay_tn})`,
+              { autoClose: 7000 }
+            )
+          })
+        }
+        // Hiển thị lỗi phí thi lại chưa thu
+        if (res.data.loi_phi_chua_thu?.length > 0) {
+          res.data.loi_phi_chua_thu.forEach(err => {
+            toast.error(
+              `💰 ${err.ho_ten}: Chưa đóng phí thi lại. Vui lòng vào Quản Lý Học Phí → Thu phí thi lại trước.`,
+              { autoClose: 8000 }
             )
           })
         }
@@ -207,8 +225,10 @@ const ThiManagement = () => {
     // Validate: kiem tra diem nhap khong vuot qua diem toi da
     for (const hv of kqData) {
       for (const b of baiThiList) {
-        if (hv.bai_thi_da_dat?.includes(b.id)) continue
+        const isDaDat = hv.bai_thi_da_dat?.includes(b.id)
         const entry = hv.diem_theo?.[b.id] || {}
+        // Bài đã đậu mà chưa override → skip validate
+        if (isDaDat && (!entry.ket_qua || entry.ket_qua === 'dat')) continue
         const diem = entry.diem
         const diemToiDa = parseFloat(b.diem_toi_da ?? 100)
         const diemNum = parseFloat(diem)
@@ -223,12 +243,32 @@ const ThiManagement = () => {
       }
     }
 
-    // Chỉ gửi bài thi mà học viên CHƯA đậu từ lần trước
+    // Gửi tất cả bài thi — kể cả bài đã đậu nếu admin đã override kết quả
+    // Bài đã đậu mà admin KHÔNG sửa → gửi ket_qua='dat' giữ nguyên
+    // Bài đã đậu mà admin sửa → gửi kết quả mới (override)
     const payload = []
     kqData.forEach(hv => {
       baiThiList.forEach(b => {
-        if (hv.bai_thi_da_dat?.includes(b.id)) return // bỏ qua bài đã đậu
+        const daDat = hv.bai_thi_da_dat || []
         const entry = hv.diem_theo?.[b.id] || {}
+
+        if (daDat.includes(b.id)) {
+          // Bài đã đậu: chỉ đưa vào payload nếu admin đã override (entry có ket_qua)
+          // Nếu không override → bỏ qua (giữ nguyên DB)
+          if (entry.ket_qua && entry.ket_qua !== 'dat') {
+            // Admin đã sửa bài này từ đạt → không đạt/vắng → gửi để backend xử lý rollback
+            payload.push({
+              ho_so_id:   hv.ho_so_id,
+              bai_thi_id: b.id,
+              diem:       entry.diem ?? null,
+              ket_qua:    entry.ket_qua,
+              nhan_xet:   entry.nhan_xet ?? null,
+            })
+          }
+          return
+        }
+
+        // Bài chưa đậu → luôn gửi
         payload.push({
           ho_so_id:   hv.ho_so_id,
           bai_thi_id: b.id,
@@ -291,7 +331,7 @@ const ThiManagement = () => {
 
   const toggleSelectAll = () => {
     // Chỉ chọn/bỏ chọn các học viên ĐỦ điều kiện và không có phí chưa thu và không bị lỗi ngày
-    const eligible = filteredHVDuDK.filter(hv => !hv.co_phi_chua_thu && !hv.lich_thi_truoc_nop_ho_so).map(hv => hv.ho_so_id)
+    const eligible = filteredHVDuDK.filter(hv => !hv.co_phi_chua_thu && !hv.lich_thi_truoc_nop_ho_so && !hv.lich_sat_hanh_truoc_tn).map(hv => hv.ho_so_id)
     if (selectedHVIds.length === eligible.length && eligible.length > 0) {
       setSelectedHVIds([])
     } else {
@@ -303,9 +343,14 @@ const ThiManagement = () => {
     <div className="thi-page">
       <div className="page-header">
         <div><h2>🏆 Lịch Thi</h2><p>Quản lý lịch thi tốt nghiệp và sát hạch</p></div>
-        <button className="btn btn-primary" onClick={() => {
+        <button className="btn btn-primary" onClick={async () => {
           setEditingThi(null)
           setForm({ loai_bang: '', loai_thi: 'tot_nghiep', ngay_thi: '', gio_thi: '', dia_diem: '', don_vi_to_chuc: DON_VI_MAC_DINH })
+          // Fetch lại khoaList để lấy bằng lái mới nhất
+          try {
+            const r = await axios.get(`${backendUrl}/api/admin/khoa-hoc`, { headers })
+            if (r.data.success) setKhoaList(r.data.data)
+          } catch {}
           setShowModal(true)
         }}>+ Tạo lịch thi</button>
       </div>
@@ -316,7 +361,7 @@ const ThiManagement = () => {
         <select className="search-input" style={{ maxWidth: 180, borderColor: filterBang ? '#0d47a1' : '', fontWeight: filterBang ? 700 : 400 }}
           value={filterBang} onChange={e => setFilterBang(e.target.value)}>
           <option value="">Tất cả loại bằng</option>
-          {['A1','A','B1','B2','C1','C','D','E','CE'].map(h => (
+          {[...new Set(khoaList.map(k => k.loai_bang).filter(Boolean))].sort().map(h => (
             <option key={h} value={h}>Hạng {h}</option>
           ))}
         </select>
@@ -402,7 +447,7 @@ const ThiManagement = () => {
                     required
                   >
                     <option value="">-- Chọn loại bằng lái --</option>
-                    {['A1','A','B1','B2','C1','C','D','E','CE'].map(h => (
+                    {[...new Set(khoaList.map(k => k.loai_bang).filter(Boolean))].sort().map(h => (
                       <option key={h} value={h}>Bằng lái hạng {h}</option>
                     ))}
                   </select>
@@ -432,7 +477,12 @@ const ThiManagement = () => {
                   </div>
                   <div className="form-group">
                     <label>Ngày thi *</label>
-                    <input type="date" value={form.ngay_thi} onChange={e => setForm({ ...form, ngay_thi: e.target.value })} required />
+                    <input
+                      type="date"
+                      value={form.ngay_thi}
+                      onChange={e => setForm({ ...form, ngay_thi: e.target.value })}
+                      required
+                    />
                   </div>
                   <div className="form-group">
                     <label>Giờ thi *</label>
@@ -566,7 +616,7 @@ const ThiManagement = () => {
                               <th>
                                 <input
                                   type="checkbox"
-                                  checked={filteredHVDuDK.length > 0 && selectedHVIds.length === filteredHVDuDK.filter(hv => !hv.co_phi_chua_thu && !hv.lich_thi_truoc_nop_ho_so).length && filteredHVDuDK.filter(hv => !hv.co_phi_chua_thu && !hv.lich_thi_truoc_nop_ho_so).length > 0}
+                                  checked={filteredHVDuDK.length > 0 && selectedHVIds.length === filteredHVDuDK.filter(hv => !hv.co_phi_chua_thu && !hv.lich_thi_truoc_nop_ho_so && !hv.lich_sat_hanh_truoc_tn).length && filteredHVDuDK.filter(hv => !hv.co_phi_chua_thu && !hv.lich_thi_truoc_nop_ho_so && !hv.lich_sat_hanh_truoc_tn).length > 0}
                                   onChange={toggleSelectAll}
                                   title="Chọn tất cả học viên đủ điều kiện"
                                 />
@@ -586,13 +636,15 @@ const ThiManagement = () => {
                                     type="checkbox"
                                     checked={selectedHVIds.includes(hv.ho_so_id)}
                                     onChange={() => toggleSelectHV(hv.ho_so_id)}
-                                    disabled={hv.co_phi_chua_thu || hv.lich_thi_truoc_nop_ho_so}
+                                    disabled={hv.co_phi_chua_thu || hv.lich_thi_truoc_nop_ho_so || hv.lich_sat_hanh_truoc_tn}
                                     title={
                                       hv.co_phi_chua_thu
                                         ? 'Học viên còn phí thi lại chưa đóng'
                                         : hv.lich_thi_truoc_nop_ho_so
                                           ? `Lịch thi (${new Date(selectedLichForHV.ngay_thi).toLocaleDateString('vi-VN')}) trước ngày nộp hồ sơ (${hv.ngay_nop_ho_so})`
-                                          : ''
+                                          : hv.lich_sat_hanh_truoc_tn
+                                            ? `Lịch sát hạch (${new Date(selectedLichForHV.ngay_thi).toLocaleDateString('vi-VN')}) phải sau ngày đậu tốt nghiệp (${hv.ngay_dau_tot_nghiep})`
+                                            : ''
                                     }
                                   />
                                 </td>
@@ -607,6 +659,11 @@ const ThiManagement = () => {
                                   {hv.lich_thi_truoc_nop_ho_so && (
                                     <div style={{ fontSize: 10, color: '#dc2626', marginTop: 2, fontWeight: 600 }}>
                                       ⚠️ Lịch thi trước ngày nộp hồ sơ ({hv.ngay_nop_ho_so})
+                                    </div>
+                                  )}
+                                  {hv.lich_sat_hanh_truoc_tn && (
+                                    <div style={{ fontSize: 10, color: '#dc2626', marginTop: 2, fontWeight: 600 }}>
+                                      ⏰ Lịch SH phải sau ngày đậu TN ({hv.ngay_dau_tot_nghiep})
                                     </div>
                                   )}
                                 </td>
@@ -657,7 +714,14 @@ const ThiManagement = () => {
                                 <td>
                                   <strong>{hv.ho_ten}</strong>
                                   <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
-                                    Chưa đủ điều kiện thi
+                                    {hv.chua_dau_tot_nghiep
+                                      ? '❌ Chưa đậu tốt nghiệp'
+                                      : hv.lich_sat_hanh_truoc_tn
+                                        ? `⏰ Lịch SH (${new Date(selectedLichForHV.ngay_thi).toLocaleDateString('vi-VN')}) trước ngày đậu TN (${hv.ngay_dau_tot_nghiep})`
+                                        : hv.co_phi_chua_thu
+                                          ? '💰 Còn phí thi lại chưa đóng'
+                                          : 'Chưa đủ điều kiện thi'
+                                    }
                                   </div>
                                 </td>
                                 <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{hv.so_cccd}</td>
@@ -775,10 +839,15 @@ const ThiManagement = () => {
                         // Bài thi đã đậu từ lần trước (miễn thi lại)
                         const daDat = hv.bai_thi_da_dat || []
 
-                        // Tính tổng kết quả: bài đã đậu trước tính là 'dat', bài lần này nhập thêm
+                        // Tính tổng kết quả: bài đã đậu trước tính là 'dat' (trừ khi bị override), bài lần này nhập thêm
                         const allEntries = baiThiList.map(b => {
-                          if (daDat.includes(b.id)) return { ket_qua: 'dat' }
-                          return hv.diem_theo?.[b.id]
+                          const entry = hv.diem_theo?.[b.id]
+                          if (daDat.includes(b.id)) {
+                            // Đã đậu: nếu admin override sang không đạt/vắng thì dùng kết quả mới
+                            if (entry?.ket_qua && entry.ket_qua !== 'dat') return { ket_qua: entry.ket_qua }
+                            return { ket_qua: 'dat' }
+                          }
+                          return entry
                         })
                         const hasAnyResult = allEntries.some(e => e?.ket_qua)
                         const allDat  = hasAnyResult && allEntries.every(e => e?.ket_qua === 'dat')
@@ -797,13 +866,109 @@ const ThiManagement = () => {
                             </td>
                             <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{hv.so_cccd}</td>
                             {baiThiList.map(b => {
-                              // Bài đã đậu từ lần trước → badge, không cho nhập
+                              // Bài đã đậu từ lần trước → hiển thị badge + nút sửa để override
                               if (daDat.includes(b.id)) {
+                                const entry   = hv.diem_theo?.[b.id] || {}
+                                const kqOver  = entry.ket_qua  // undefined = chưa override
+                                const isOverriding = entry._editing || (kqOver && kqOver !== 'dat')
+
                                 return (
-                                  <td key={b.id} style={{ padding: '6px 8px', textAlign: 'center', background: '#f0fdf4' }}>
+                                  <td key={b.id} style={{
+                                    padding: '6px 8px', textAlign: 'center',
+                                    background: isOverriding ? '#fff1f2' : '#f0fdf4'
+                                  }}>
                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                                      <span className="badge badge-success" style={{ fontSize: 11 }}>✅ Đã đạt</span>
-                                      <span style={{ fontSize: 10, color: '#86efac' }}>Miễn thi lại</span>
+                                      {!isOverriding ? (
+                                        <>
+                                          <span className="badge badge-success" style={{ fontSize: 11 }}>✅ Đã đạt</span>
+                                          <button
+                                            type="button"
+                                            title="Sửa kết quả bài này"
+                                            style={{
+                                              fontSize: 10, padding: '1px 6px', borderRadius: 4,
+                                              border: '1px solid #fca5a5', background: '#fff1f2',
+                                              color: '#dc2626', cursor: 'pointer'
+                                            }}
+                                            onClick={() => setKqData(prev => prev.map((x, j) => j !== i ? x : {
+                                              ...x,
+                                              diem_theo: {
+                                                ...x.diem_theo,
+                                                [b.id]: { ket_qua: null, diem: null, _editing: true }
+                                              }
+                                            }))}
+                                          >✏️ Sửa</button>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <input
+                                            type="number"
+                                            step="0.1" min="0" max={b.diem_toi_da ?? 100}
+                                            placeholder="Điểm"
+                                            value={entry.diem ?? ''}
+                                            style={{
+                                              width: 72, padding: '4px 8px', textAlign: 'center',
+                                              border: '1px solid #fca5a5', borderRadius: 6, fontSize: 13,
+                                              background: '#fff1f2',
+                                            }}
+                                            onChange={e => {
+                                              const val = e.target.value
+                                              let d = val === '' ? null : parseFloat(val)
+                                              const diemToiDa = parseFloat(b.diem_toi_da ?? 100)
+                                              if (d !== null && d > diemToiDa) d = diemToiDa
+                                              if (d !== null && d < 0) d = 0
+                                              const auto = d === null ? (kqOver || null) : (d >= b.diem_dat ? 'dat' : 'khong_dat')
+                                              setKqData(prev => prev.map((x, j) => j !== i ? x : {
+                                                ...x,
+                                                diem_theo: {
+                                                  ...x.diem_theo,
+                                                  [b.id]: { ...x.diem_theo?.[b.id], diem: d, ket_qua: auto, _editing: true }
+                                                }
+                                              }))
+                                            }}
+                                          />
+                                          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                            {/* Chỉ giữ nút Vắng khi override bài đã đạt */}
+                                            <button
+                                              key="vang_mat"
+                                              type="button"
+                                              title="Vắng"
+                                              style={{
+                                                padding: '2px 6px', fontSize: 11, borderRadius: 4, cursor: 'pointer',
+                                                border: '1px solid',
+                                                borderColor: kqOver === 'vang_mat' ? '#d97706' : '#e2e8f0',
+                                                background: kqOver === 'vang_mat' ? '#fef3c7' : '#f8fafc',
+                                                color: kqOver === 'vang_mat' ? '#d97706' : '#94a3b8',
+                                                fontWeight: kqOver === 'vang_mat' ? 700 : 400,
+                                              }}
+                                              onClick={() => setKqData(prev => prev.map((x, j) => j !== i ? x : {
+                                                ...x,
+                                                diem_theo: {
+                                                  ...x.diem_theo,
+                                                  [b.id]: { ...x.diem_theo?.[b.id], ket_qua: kqOver === 'vang_mat' ? 'khong_dat' : 'vang_mat' }
+                                                }
+                                              }))}
+                                            >
+                                              ⚠️ Vắng
+                                            </button>
+                                            {/* Nút huỷ override → khôi phục đã đạt */}
+                                            <button
+                                              type="button"
+                                              title="Huỷ sửa, giữ nguyên Đã đạt"
+                                              style={{
+                                                padding: '2px 5px', fontSize: 11, borderRadius: 4, cursor: 'pointer',
+                                                border: '1px solid #86efac', background: '#f0fdf4', color: '#16a34a'
+                                              }}
+                                              onClick={() => setKqData(prev => prev.map((x, j) => j !== i ? x : {
+                                                ...x,
+                                                diem_theo: {
+                                                  ...x.diem_theo,
+                                                  [b.id]: { ket_qua: undefined, diem: null, _editing: false }
+                                                }
+                                              }))}
+                                            >↩</button>
+                                          </div>
+                                        </>
+                                      )}
                                     </div>
                                   </td>
                                 )
@@ -845,30 +1010,28 @@ const ThiManagement = () => {
                                       }}
                                     />
                                     <div style={{ display: 'flex', gap: 4 }}>
-                                      {['dat', 'khong_dat', 'vang_mat'].map(v => (
-                                        <button
-                                          key={v}
-                                          type="button"
-                                          title={v === 'dat' ? 'Đạt' : v === 'khong_dat' ? 'Không đạt' : 'Vắng'}
-                                          style={{
-                                            padding: '2px 6px', fontSize: 11, borderRadius: 4, cursor: 'pointer',
-                                            border: '1px solid',
-                                            borderColor: kq === v ? (v === 'dat' ? '#16a34a' : v === 'khong_dat' ? '#dc2626' : '#d97706') : '#e2e8f0',
-                                            background: kq === v ? (v === 'dat' ? '#dcfce7' : v === 'khong_dat' ? '#fee2e2' : '#fef3c7') : '#f8fafc',
-                                            color: kq === v ? (v === 'dat' ? '#16a34a' : v === 'khong_dat' ? '#dc2626' : '#d97706') : '#94a3b8',
-                                            fontWeight: kq === v ? 700 : 400,
-                                          }}
-                                          onClick={() => setKqData(prev => prev.map((x, j) => j !== i ? x : {
-                                            ...x,
-                                            diem_theo: {
-                                              ...x.diem_theo,
-                                              [b.id]: { ...x.diem_theo?.[b.id], ket_qua: v }
-                                            }
-                                          }))}
-                                        >
-                                          {v === 'dat' ? '✅' : v === 'khong_dat' ? '❌' : '⚠️'}
-                                        </button>
-                                      ))}
+                                      {/* Chỉ giữ nút Vắng — đạt/không đạt tự động tính từ điểm */}
+                                      <button
+                                        type="button"
+                                        title="Vắng mặt"
+                                        style={{
+                                          padding: '2px 6px', fontSize: 11, borderRadius: 4, cursor: 'pointer',
+                                          border: '1px solid',
+                                          borderColor: kq === 'vang_mat' ? '#d97706' : '#e2e8f0',
+                                          background: kq === 'vang_mat' ? '#fef3c7' : '#f8fafc',
+                                          color: kq === 'vang_mat' ? '#d97706' : '#94a3b8',
+                                          fontWeight: kq === 'vang_mat' ? 700 : 400,
+                                        }}
+                                        onClick={() => setKqData(prev => prev.map((x, j) => j !== i ? x : {
+                                          ...x,
+                                          diem_theo: {
+                                            ...x.diem_theo,
+                                            [b.id]: { ...x.diem_theo?.[b.id], diem: null, ket_qua: kq === 'vang_mat' ? null : 'vang_mat' }
+                                          }
+                                        }))}
+                                      >
+                                        ⚠️ Vắng
+                                      </button>
                                     </div>
                                   </div>
                                 </td>

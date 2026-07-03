@@ -4,7 +4,7 @@ import { toast } from 'react-toastify'
 import { useAdmin } from '../../context/AdminContext'
 import './BaiThiManagement.css'
 
-const LOAI_BANG_ORDER = ['A1', 'A', 'B1', 'B2', 'C1', 'C', 'D', 'E', 'CE']
+const LOAI_BANG_ORDER = ['A1', 'A', 'B1', 'B2', 'C1', 'C', 'D', 'E', 'CE', 'C2']
 
 const emptyForm = {
   khoa_hoc_id: '',

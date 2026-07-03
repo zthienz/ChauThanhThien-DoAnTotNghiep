@@ -43,6 +43,23 @@ class DangKyController extends Controller
             // Cùng người → cho phép đăng ký thêm khóa học (không return lỗi)
         }
 
+        // ── Kiểm tra tuổi tối thiểu — lấy từ cấu hình bằng lái ─────────────
+        $khoa     = KhoaHoc::findOrFail($request->khoa_hoc_id);
+        $loaiBang = $khoa->loai_bang;
+
+        if (!empty($khoa->tuoi_toi_thieu)) {
+            $ngaySinh    = \Carbon\Carbon::parse($request->ngay_sinh);
+            $tuoiHienTai = $ngaySinh->age;
+            $tuoiMin     = $khoa->tuoi_toi_thieu;
+
+            if ($tuoiHienTai < $tuoiMin) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Bạn chưa đủ tuổi. Bằng hạng {$loaiBang} yêu cầu tối thiểu {$tuoiMin} tuổi (hiện tại: {$tuoiHienTai} tuổi).",
+                ], 422);
+            }
+        }
+
         // Xử lý upload ảnh thẻ
         $anhThePath = null;
         if ($request->hasFile('anh_the')) {

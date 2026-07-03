@@ -34,6 +34,8 @@ const BangLaiManagement = () => {
   const [viewItem, setViewItem]   = useState(null)
   const [editing, setEditing]     = useState(null)
   const [form, setForm]           = useState(emptyForm)
+  const [anhFile, setAnhFile]     = useState(null)   // file ảnh mới chọn
+  const [anhPreview, setAnhPreview] = useState('')   // preview URL
   const [activeTab, setActiveTab] = useState('co_ban')
   const [search, setSearch]       = useState('')
   const headers = { Authorization: `Bearer ${token}` }
@@ -55,6 +57,8 @@ const BangLaiManagement = () => {
   const openAdd = () => {
     setEditing(null)
     setForm(emptyForm)
+    setAnhFile(null)
+    setAnhPreview('')
     setActiveTab('co_ban')
     setShowModal(true)
   }
@@ -63,24 +67,57 @@ const BangLaiManagement = () => {
     setEditing(k)
     setActiveTab('co_ban')
     setShowModal(true)
-    setForm({ ...emptyForm, ...k }) // hiển thị ngay với data có sẵn
-    // Fetch lại chi tiết để đảm bảo có đủ các field text dài
+    setAnhFile(null)
+    setAnhPreview(k.anh ? `${backendUrl}/uploads/${k.anh}` : '')
+    setForm({ ...emptyForm, ...k })
     try {
       const res = await axios.get(`${backendUrl}/api/admin/khoa-hoc/${k.id}`, { headers })
       if (res.data.success) {
-        setForm({ ...emptyForm, ...res.data.data })
+        const d = res.data.data
+        setForm({ ...emptyForm, ...d })
+        setAnhPreview(d.anh ? `${backendUrl}/uploads/${d.anh}` : '')
       }
     } catch {
       // giữ nguyên data cũ nếu fetch lỗi
     }
   }
 
+  const handleAnhChange = e => {
+    const file = e.target.files[0]
+    if (!file) return
+    setAnhFile(file)
+    setAnhPreview(URL.createObjectURL(file))
+  }
+
   const handleSave = async e => {
     e.preventDefault()
+
+    // Validate: không được để cả 2 đều = 0
+    const buoi = Number(form.so_buoi_ly_thuyet_toi_thieu)
+    const km   = Number(form.so_km_toi_thieu)
+    if (buoi === 0 && km === 0) {
+      toast.error('Bằng lái phải có ít nhất số buổi lý thuyết hoặc số km thực hành > 0.')
+      return
+    }
+
     try {
+      const fd = new FormData()
+      Object.entries(form).forEach(([k, v]) => {
+        if (v === null || v === undefined) return
+        // Boolean phải convert sang 0/1 vì FormData stringify mọi thứ
+        if (typeof v === 'boolean') {
+          fd.append(k, v ? '1' : '0')
+        } else if (v !== '') {
+          fd.append(k, v)
+        }
+      })
+      if (anhFile) fd.append('anh', anhFile)
+
+      const uploadHeaders = { ...headers, 'Content-Type': 'multipart/form-data' }
       const res = editing
-        ? await axios.put(`${backendUrl}/api/admin/khoa-hoc/${editing.id}`, form, { headers })
-        : await axios.post(`${backendUrl}/api/admin/khoa-hoc`, form, { headers })
+        ? await axios.post(`${backendUrl}/api/admin/khoa-hoc/${editing.id}/update`, fd, { headers: uploadHeaders })
+        : await axios.post(`${backendUrl}/api/admin/khoa-hoc`, fd, { headers: uploadHeaders })
+
       if (res.data.success) {
         toast.success(editing ? 'Cập nhật thành công' : 'Tạo bằng lái thành công')
         setShowModal(false)
@@ -195,7 +232,7 @@ const BangLaiManagement = () => {
                     <td><strong>{k.ten_khoa}</strong></td>
                     <td><span className="badge badge-blue">Hạng {k.loai_bang}</span></td>
                     <td>{Number(k.hoc_phi).toLocaleString('vi-VN')} VNĐ</td>
-                    <td>{k.so_buoi_ly_thuyet_toi_thieu} buổi</td>
+                    <td>{k.so_buoi_ly_thuyet_toi_thieu > 0 ? k.so_buoi_ly_thuyet_toi_thieu + ' buổi' : '—'}</td>
                     <td>{k.so_km_toi_thieu > 0 ? k.so_km_toi_thieu + ' km' : '—'}</td>
                     <td>
                       {k.tuoi_toi_thieu
@@ -212,6 +249,7 @@ const BangLaiManagement = () => {
                     <td>
                       <div className="action-cell">
                         <button className="btn btn-info btn-sm" onClick={() => setViewItem(k)}>👁️ Xem</button>
+                        <button className="btn btn-warning btn-sm" onClick={() => openEdit(k)}>✏️ Sửa</button>
                         <button
                           className={`btn btn-sm ${k.is_active !== false ? 'btn-outline' : 'btn-success'}`}
                           onClick={() => handleToggleActive(k)}
@@ -298,20 +336,52 @@ const BangLaiManagement = () => {
                           value={form.so_buoi_ly_thuyet_toi_thieu}
                           onChange={e => f({ so_buoi_ly_thuyet_toi_thieu: e.target.value })}
                           required
-                          placeholder="VD: 20"
-                          min={1}
+                          placeholder="VD: 20 (nhập 0 nếu không có lý thuyết)"
+                          min={0}
                         />
+                        {form.so_buoi_ly_thuyet_toi_thieu !== '' && Number(form.so_buoi_ly_thuyet_toi_thieu) === 0 && Number(form.so_km_toi_thieu) !== 0 && (
+                          <p style={{ fontSize: 12, color: '#f59e0b', marginTop: 4 }}>
+                            ⚠️ Hạng bằng này sẽ không yêu cầu học lý thuyết.
+                          </p>
+                        )}
                       </div>
                       <div className="form-group">
-                        <label>Km thực hành tối thiểu</label>
+                        <label>Km thực hành tối thiểu *</label>
                         <input
                           type="number"
                           value={form.so_km_toi_thieu}
                           onChange={e => f({ so_km_toi_thieu: e.target.value })}
+                          required
                           placeholder="VD: 810 (nhập 0 nếu không có thực hành)"
                           min={0}
                         />
+                        {form.so_km_toi_thieu !== '' && Number(form.so_km_toi_thieu) === 0 && Number(form.so_buoi_ly_thuyet_toi_thieu) !== 0 && (
+                          <p style={{ fontSize: 12, color: '#f59e0b', marginTop: 4 }}>
+                            ⚠️ Hạng bằng này sẽ không yêu cầu thực hành km.
+                          </p>
+                        )}
                       </div>
+                      {/* Cảnh báo khi cả 2 đều = 0 hoặc chưa nhập */}
+                      {(() => {
+                        const buoiVal = form.so_buoi_ly_thuyet_toi_thieu
+                        const kmVal   = form.so_km_toi_thieu
+                        const buoiEmpty = buoiVal === '' || buoiVal === null || buoiVal === undefined
+                        const kmEmpty   = kmVal   === '' || kmVal   === null || kmVal   === undefined
+                        // Cả 2 đều chưa nhập (sau khi bấm Tạo mới, form rỗng) → không hiện
+                        if (buoiEmpty && kmEmpty) return null
+                        // Cả 2 đều = 0 → cảnh báo lỗi
+                        if (!buoiEmpty && !kmEmpty && Number(buoiVal) === 0 && Number(kmVal) === 0) {
+                          return (
+                            <div style={{ gridColumn: '1 / -1', background: '#fef3c7', border: '1px solid #fbbf24', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                              <span style={{ fontSize: 16 }}>⚠️</span>
+                              <p style={{ fontSize: 13, color: '#92400e', margin: 0 }}>
+                                <strong>Cảnh báo:</strong> Không thể để cả hai mục <em>Buổi lý thuyết tối thiểu</em> và <em>Km thực hành tối thiểu</em> đều bằng 0. Bằng lái phải có ít nhất một trong hai yêu cầu.
+                              </p>
+                            </div>
+                          )
+                        }
+                        return null
+                      })()}
                       <div className="form-group">
                         <label>Tuổi tối thiểu</label>
                         <input
@@ -351,6 +421,31 @@ const BangLaiManagement = () => {
                         onChange={e => f({ mo_ta: e.target.value })}
                         placeholder="Mô tả ngắn về loại bằng lái này..."
                       />
+                    </div>
+                    <div className="form-group">
+                      <label>Ảnh đại diện</label>
+                      <input
+                        type="file"
+                        accept="image/jpg,image/jpeg,image/png,image/webp"
+                        onChange={handleAnhChange}
+                        style={{ display: 'block', marginBottom: 8 }}
+                      />
+                      {anhPreview && (
+                        <div style={{ marginTop: 8 }}>
+                          <img
+                            src={anhPreview}
+                            alt="preview"
+                            style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8, objectFit: 'cover', border: '1px solid #e5e7eb' }}
+                          />
+                          <button
+                            type="button"
+                            style={{ display: 'block', marginTop: 4, fontSize: 12, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}
+                            onClick={() => { setAnhFile(null); setAnhPreview('') }}
+                          >
+                            ✕ Xóa ảnh
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <div className="form-group">
                       <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
@@ -470,7 +565,7 @@ const BangLaiManagement = () => {
                 {[
                   ['💰 Học phí', Number(viewItem.hoc_phi).toLocaleString('vi-VN') + ' VNĐ'],
                   ['🏫 Số lớp đang có', (viewItem.lop_hoc_count ?? 0) + ' lớp'],
-                  ['📖 Buổi LT tối thiểu', viewItem.so_buoi_ly_thuyet_toi_thieu + ' buổi'],
+                  ['📖 Buổi LT tối thiểu', viewItem.so_buoi_ly_thuyet_toi_thieu > 0 ? viewItem.so_buoi_ly_thuyet_toi_thieu + ' buổi' : 'Không có lý thuyết'],
                   ['🛣️ Km thực hành tối thiểu', viewItem.so_km_toi_thieu > 0 ? viewItem.so_km_toi_thieu + ' km' : 'Không có thực hành'],
                   ['🚗 Loại xe', viewItem.loai_xe_mo_ta || '—'],
                   ['🎂 Tuổi tối thiểu', viewItem.tuoi_toi_thieu ? viewItem.tuoi_toi_thieu + ' tuổi' : '—'],

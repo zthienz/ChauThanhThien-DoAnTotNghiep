@@ -1,4 +1,5 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, useLocation } from 'react-router-dom'
+import { useEffect } from 'react'
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import Navbar from './components/Navbar/Navbar'
@@ -10,9 +11,19 @@ import LienHe from './pages/LienHe/LienHe'
 import DangKy from './pages/DangKy/DangKy'
 import TinTuc from './pages/TinTuc/TinTuc'
 
+// Tự động cuộn về đầu trang mỗi khi chuyển route
+const ScrollToTop = () => {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' })
+  }, [pathname])
+  return null
+}
+
 const App = () => {
   return (
     <>
+      <ScrollToTop />
       <ToastContainer position="top-right" autoClose={3000} />
       <Navbar />
       <main>

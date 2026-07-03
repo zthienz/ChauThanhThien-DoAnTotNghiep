@@ -370,6 +370,7 @@ const LopHocManagement = () => {
                       <td>
                         <div className="action-cell">
                           <button className="btn btn-info btn-sm" onClick={() => openView(l)}>👁️ Xem</button>
+                          <button className="btn btn-warning btn-sm" onClick={() => openEdit(l)}>✏️ Sửa</button>
                           <button className="btn btn-danger btn-sm" onClick={() => handleDelete(l)}>🗑️</button>
                         </div>
                       </td>

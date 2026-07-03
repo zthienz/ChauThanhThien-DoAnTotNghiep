@@ -8,7 +8,7 @@ import './CapBangManagement.css'
 const fmtDate = d => d ? new Date(d).toLocaleDateString('vi-VN') : '—'
 
 const LOAI_BANG_LABEL = {
-  A1:'A1', A:'A', B1:'B1', B2:'B2', C1:'C1', C:'C', D:'D', E:'E', CE:'CE'
+  A1:'A1', A:'A', B1:'B1', B2:'B2', C1:'C1', C:'C', C2:'C2', D:'D', E:'E', CE:'CE'
 }
 
 // Tính tổng kết quả thi của học viên trong 1 loại thi

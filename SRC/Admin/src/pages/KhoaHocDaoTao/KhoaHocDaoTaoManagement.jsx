@@ -82,7 +82,7 @@ const KhoaHocDaoTaoManagement = () => {
         }
       } catch {
         // fallback nếu API lỗi
-        setHangBangList(['A', 'A1', 'B1', 'B2', 'C', 'C1', 'CE', 'D', 'E'])
+        setHangBangList(['A1', 'A', 'B1', 'B2', 'C1', 'C', 'C2', 'CE', 'D', 'E'])
       }
     }
     fetchHangBang()
@@ -330,6 +330,11 @@ const KhoaHocDaoTaoManagement = () => {
                       <td>
                         <div className="action-cell">
                           <button className="btn btn-info btn-sm" onClick={() => fetchKhoaDetail(k)}>👁️ Xem</button>
+                          <button className="btn btn-warning btn-sm" onClick={() => {
+                            setEditingKhoa(k)
+                            setKhoaForm({ ten_khoa_dao_tao: k.ten_khoa_dao_tao, thang: k.thang, nam: k.nam, hang_bang: k.hang_bang, ghi_chu: k.ghi_chu || '' })
+                            setShowKhoaModal(true)
+                          }}>✏️ Sửa</button>
                           <button className="btn btn-danger btn-sm" onClick={() => handleDeleteKhoa(k.id)}>🗑️ Xóa</button>
                         </div>
                       </td>

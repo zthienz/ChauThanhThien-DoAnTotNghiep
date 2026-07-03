@@ -72,7 +72,12 @@ class ThiController extends Controller
 
     public function updateLichThi(Request $request, $id)
     {
-        LichThi::findOrFail($id)->update($request->all());
+        $lichThi = LichThi::findOrFail($id);
+        $loaiThi  = $request->loai_thi ?? $lichThi->loai_thi;
+        $ngayThi  = $request->ngay_thi ?? $lichThi->ngay_thi;
+        $khoaHocId = $request->khoa_hoc_id ?? $lichThi->khoa_hoc_id;
+
+        $lichThi->update($request->all());
         return response()->json(['success' => true, 'message' => 'Cập nhật thành công']);
     }
 
@@ -153,7 +158,88 @@ class ThiController extends Controller
             }
         }
 
-        $mapHocVien = function ($hvl) use ($lichThi) {
+        // Học viên đã đậu TN (dùng để kiểm tra điều kiện vào lịch sát hạch)
+        $hoSoDaDauTNChoSH = collect();
+        if ($lichThi->loai_thi === 'sat_hanh') {
+            $baiThiTNKhoa  = $this->getBaiThiCuaKhoa($lichThi->khoa_hoc_id, 'tot_nghiep');
+            $soBaiTNCanDat = $baiThiTNKhoa->count();
+            $baiThiTNIds   = $baiThiTNKhoa->pluck('id');
+
+            $lichThiTNIds = LichThi::whereIn('khoa_hoc_id', $khoaCungHang)
+                ->where('loai_thi', 'tot_nghiep')
+                ->pluck('id');
+
+            if ($soBaiTNCanDat > 0 && $lichThiTNIds->isNotEmpty()) {
+                // Tổng hợp bài đạt qua TẤT CẢ lịch TN (hỗ trợ thi lại từng bài)
+                // Với mỗi bài thi, lấy kết quả MỚI NHẤT — nếu đạt thì tính là đạt
+                $hoSoDaDauTNChoSH = KetQuaThi::whereIn('lich_thi_id', $lichThiTNIds)
+                    ->whereIn('bai_thi_id', $baiThiTNIds)
+                    ->whereNotNull('ket_qua')
+                    ->select('ho_so_id', 'bai_thi_id', 'ket_qua', 'lich_thi_id')
+                    ->get()
+                    ->groupBy('ho_so_id')
+                    ->filter(function ($rows) use ($soBaiTNCanDat, $baiThiTNIds) {
+                        // Với mỗi bài thi, lấy kết quả từ lịch thi có id lớn nhất (mới nhất)
+                        $ketQuaMoiNhat = $rows->groupBy('bai_thi_id')->map(function ($baiRows) {
+                            return $baiRows->sortByDesc('lich_thi_id')->first();
+                        });
+                        // Đếm số bài có kết quả mới nhất là 'dat'
+                        $soBaiDat = $ketQuaMoiNhat->filter(fn($kq) => $kq->ket_qua === 'dat')->count();
+                        return $soBaiDat >= $soBaiTNCanDat;
+                    })
+                    ->keys();
+            }
+        }
+
+        // ── Tính ngày đậu TN của từng học viên (dùng cho lịch sát hạch) ──
+        // Với trường hợp thi lại từng bài: học viên đậu TN khi tổng hợp bài dat
+        // qua tất cả lịch đủ số bài yêu cầu. Ngày đậu TN = ngày thi của lịch
+        // mà bài cuối cùng được nhập dat (ngày muộn nhất trong các bài dat).
+        $ngayDauTNTheoHoSo = collect();
+        if ($lichThi->loai_thi === 'sat_hanh') {
+            $baiThiTNMap   = $this->getBaiThiCuaKhoa($lichThi->khoa_hoc_id, 'tot_nghiep');
+            $soBaiTNCanDat = $baiThiTNMap->count();
+            $baiThiTNIds   = $baiThiTNMap->pluck('id');
+
+            $lichThiTNAll = LichThi::whereIn('khoa_hoc_id', $khoaCungHang)
+                ->where('loai_thi', 'tot_nghiep')
+                ->pluck('id');
+
+            if ($soBaiTNCanDat > 0 && $lichThiTNAll->isNotEmpty()) {
+                // Lấy tất cả KQ (kể cả không đạt) để tính kết quả mới nhất mỗi bài
+                $kqTN = KetQuaThi::whereIn('lich_thi_id', $lichThiTNAll)
+                    ->whereIn('bai_thi_id', $baiThiTNIds)
+                    ->whereNotNull('ket_qua')
+                    ->select('ho_so_id', 'bai_thi_id', 'ket_qua', 'lich_thi_id')
+                    ->with('lichThi:id,ngay_thi')
+                    ->get()
+                    ->groupBy('ho_so_id');
+
+                foreach ($kqTN as $hoSoId => $rows) {
+                    // Với mỗi bài thi: lấy kết quả từ lịch thi có id lớn nhất (mới nhất)
+                    $ketQuaMoiNhat = $rows->groupBy('bai_thi_id')->map(function ($baiRows) {
+                        return $baiRows->sortByDesc('lich_thi_id')->first();
+                    });
+
+                    // Chỉ xét học viên đậu đủ tất cả bài
+                    $baiDatRows = $ketQuaMoiNhat->filter(fn($kq) => $kq->ket_qua === 'dat');
+                    if ($baiDatRows->count() < $soBaiTNCanDat) continue;
+
+                    // Ngày đậu TN = ngày thi muộn nhất trong số các bài đã đậu
+                    // (tức là ngày hoàn thành bài cuối cùng)
+                    $ngayTN = $baiDatRows->map(fn($kq) => $kq->lichThi->ngay_thi ?? null)
+                        ->filter()
+                        ->max();
+
+                    if ($ngayTN) {
+                        $ngayDauTNTheoHoSo->put($hoSoId, $ngayTN);
+                    }
+                }
+            }
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
+        $mapHocVien = function ($hvl) use ($lichThi, $hoSoDaDauTNChoSH, $ngayDauTNTheoHoSo) {
             $hoSo = $hvl->hoSo;
             $coPhiChuaThu = KetQuaThi::where('ho_so_id', $hoSo->id)
                 ->whereHas('lichThi', fn($q) => $q
@@ -168,6 +254,20 @@ class ThiController extends Controller
             $ngayNopHoSo = \Carbon\Carbon::parse($hoSo->created_at)->startOfDay();
             $ngayThi     = \Carbon\Carbon::parse($lichThi->ngay_thi)->startOfDay();
             $lichThiTruocNopHoSo = $ngayThi->lt($ngayNopHoSo);
+
+            // ── Kiểm tra: lịch sát hạch phải SAU ngày đậu tốt nghiệp của học viên ──
+            $lichSatHachTruocTN = false;
+            $ngayDauTNFmt       = null;
+            if ($lichThi->loai_thi === 'sat_hanh' && $hoSoDaDauTNChoSH->contains($hoSo->id)) {
+                $ngayDauTN = $ngayDauTNTheoHoSo->get($hoSo->id);
+                if ($ngayDauTN) {
+                    $ngayDauTNCarbon    = \Carbon\Carbon::parse($ngayDauTN)->startOfDay();
+                    $ngayDauTNFmt       = $ngayDauTNCarbon->format('d/m/Y');
+                    // Lịch sát hạch phải SAU (ngày SH > ngày TN đậu)
+                    $lichSatHachTruocTN = $ngayThi->lte($ngayDauTNCarbon);
+                }
+            }
+            // ─────────────────────────────────────────────────────────────────
 
             return [
                 'ho_so_id'                 => $hoSo->id,
@@ -184,6 +284,13 @@ class ThiController extends Controller
                 'co_phi_chua_thu'          => $coPhiChuaThu,
                 'lich_thi_truoc_nop_ho_so' => $lichThiTruocNopHoSo,
                 'ngay_nop_ho_so'           => $ngayNopHoSo->format('d/m/Y'),
+                // Cờ cho lịch sát hạch: học viên chưa đậu tốt nghiệp
+                'chua_dau_tot_nghiep'      => $lichThi->loai_thi === 'sat_hanh'
+                                                ? !$hoSoDaDauTNChoSH->contains($hoSo->id)
+                                                : false,
+                // Cờ cho lịch sát hạch: lịch SH diễn ra trước hoặc cùng ngày thi TN của học viên
+                'lich_sat_hanh_truoc_tn'   => $lichSatHachTruocTN,
+                'ngay_dau_tot_nghiep'      => $ngayDauTNFmt,
             ];
         };
 
@@ -206,6 +313,19 @@ class ThiController extends Controller
 
         $hoSoDuDKIds = $hocVienDuDK->pluck('ho_so_id');
 
+        // Với lịch sát hạch: tách học viên chưa đậu TN hoặc lịch SH trước ngày đậu TN sang "chưa đủ điều kiện"
+        if ($lichThi->loai_thi === 'sat_hanh') {
+            $hocVienChuaDauTN = $hocVienDuDK->filter(
+                fn($hv) => $hv['chua_dau_tot_nghiep'] || $hv['lich_sat_hanh_truoc_tn']
+            );
+            $hocVienDuDK = $hocVienDuDK->filter(
+                fn($hv) => !$hv['chua_dau_tot_nghiep'] && !$hv['lich_sat_hanh_truoc_tn']
+            )->values();
+            $hoSoDuDKIds = $hocVienDuDK->pluck('ho_so_id');
+        } else {
+            $hocVienChuaDauTN = collect();
+        }
+
         $hocVienChuaDuDK = HocVienLop::with(['hoSo', 'lopHoc'])
             ->whereIn('lop_hoc_id', $lopIds)
             ->where('du_dieu_kien_thi_tn', false)
@@ -223,6 +343,9 @@ class ThiController extends Controller
             })
             ->get()
             ->map($mapHocVien);
+
+        // Gộp học viên chưa đậu TN vào nhóm chưa đủ điều kiện (đầu danh sách)
+        $hocVienChuaDuDK = $hocVienChuaDauTN->values()->merge($hocVienChuaDuDK->values());
 
         $daXepVaoLich = LichThiHocVien::with('hoSo')
             ->where('lich_thi_id', $lichThiId)
@@ -325,6 +448,36 @@ class ThiController extends Controller
             }
         }
 
+        // ── Tính tập học viên đã đậu TN để kiểm tra điều kiện vào lịch sát hạch ──
+        $hoSoDaDauTNChoSH = collect();
+        if ($lichThi->loai_thi === 'sat_hanh') {
+            $baiThiTN       = $this->getBaiThiCuaKhoa($lichThi->khoa_hoc_id, 'tot_nghiep');
+            $soBaiTNCanDat  = $baiThiTN->count();
+            $baiThiTNIds    = $baiThiTN->pluck('id');
+
+            $lichThiTNCungHang = LichThi::whereIn('khoa_hoc_id', $khoaCungHang)
+                ->where('loai_thi', 'tot_nghiep')
+                ->pluck('id');
+
+            if ($soBaiTNCanDat > 0 && $lichThiTNCungHang->isNotEmpty()) {
+                // Tổng hợp bài đạt qua TẤT CẢ lịch TN, lấy kết quả mới nhất mỗi bài
+                $hoSoDaDauTNChoSH = KetQuaThi::whereIn('lich_thi_id', $lichThiTNCungHang)
+                    ->whereIn('bai_thi_id', $baiThiTNIds)
+                    ->whereNotNull('ket_qua')
+                    ->select('ho_so_id', 'bai_thi_id', 'ket_qua', 'lich_thi_id')
+                    ->get()
+                    ->groupBy('ho_so_id')
+                    ->filter(function ($rows) use ($soBaiTNCanDat) {
+                        $ketQuaMoiNhat = $rows->groupBy('bai_thi_id')->map(function ($baiRows) {
+                            return $baiRows->sortByDesc('lich_thi_id')->first();
+                        });
+                        $soBaiDat = $ketQuaMoiNhat->filter(fn($kq) => $kq->ket_qua === 'dat')->count();
+                        return $soBaiDat >= $soBaiTNCanDat;
+                    })
+                    ->keys();
+            }
+        }
+
         $errors = [];  // thu thập lỗi ngày nộp hồ sơ
 
         foreach ($request->ho_so_ids as $hoSoId) {
@@ -349,6 +502,65 @@ class ThiController extends Controller
                 if (in_array($trangThaiHV, $trangThaiDaQua)) continue;
             }
 
+            // ── Kiểm tra điều kiện sát hạch: phải đậu TN trước ─────────────
+            if ($lichThi->loai_thi === 'sat_hanh') {
+                if (!$hoSoDaDauTNChoSH->contains($hoSoId)) {
+                    continue; // Học viên chưa đậu tốt nghiệp, không được xếp vào lịch sát hạch
+                }
+
+                // ── Kiểm tra: lịch sát hạch phải SAU ngày đậu TN của học viên ──
+                $baiThiTNSoSanh  = $this->getBaiThiCuaKhoa($lichThi->khoa_hoc_id, 'tot_nghiep');
+                $soBaiTNSoSanh   = $baiThiTNSoSanh->count();
+                $baiThiTNSoSanhIds = $baiThiTNSoSanh->pluck('id');
+                $lichThiTNIds2   = LichThi::whereIn('khoa_hoc_id', $khoaCungHang)
+                    ->where('loai_thi', 'tot_nghiep')
+                    ->pluck('id');
+
+                $ngayDauTNHocVien = null;
+                if ($soBaiTNSoSanh > 0 && $lichThiTNIds2->isNotEmpty()) {
+                    // Tổng hợp kết quả mới nhất mỗi bài qua tất cả lịch TN
+                    $kqTNHV = KetQuaThi::whereIn('lich_thi_id', $lichThiTNIds2)
+                        ->where('ho_so_id', $hoSoId)
+                        ->whereIn('bai_thi_id', $baiThiTNSoSanhIds)
+                        ->whereNotNull('ket_qua')
+                        ->select('bai_thi_id', 'ket_qua', 'lich_thi_id')
+                        ->with('lichThi:id,ngay_thi')
+                        ->get();
+
+                    // Với mỗi bài: lấy kết quả từ lịch có id lớn nhất (mới nhất)
+                    $ketQuaMoiNhat = $kqTNHV->groupBy('bai_thi_id')->map(function ($baiRows) {
+                        return $baiRows->sortByDesc('lich_thi_id')->first();
+                    });
+
+                    $baiDatRows = $ketQuaMoiNhat->filter(fn($kq) => $kq->ket_qua === 'dat');
+
+                    if ($baiDatRows->count() >= $soBaiTNSoSanh) {
+                        // Ngày đậu TN = ngày thi muộn nhất trong các bài dat (ngày hoàn thành bài cuối)
+                        $ngayDauTNHocVien = $baiDatRows->map(fn($kq) => $kq->lichThi->ngay_thi ?? null)
+                            ->filter()
+                            ->max();
+                    }
+                }
+
+                if ($ngayDauTNHocVien) {
+                    $ngayTNCarbon = \Carbon\Carbon::parse($ngayDauTNHocVien)->startOfDay();
+                    $ngaySHCarbon = \Carbon\Carbon::parse($lichThi->ngay_thi)->startOfDay();
+                    if ($ngaySHCarbon->lte($ngayTNCarbon)) {
+                        $hoSoInfo = HoSoHocVien::find($hoSoId);
+                        $errors[] = [
+                            'ho_so_id'    => $hoSoId,
+                            'ho_ten'      => $hoSoInfo->ho_ten ?? 'Học viên',
+                            'loai_loi'    => 'sat_hanh_truoc_tn',
+                            'ngay_tn'     => $ngayTNCarbon->format('d/m/Y'),
+                            'ngay_sat_hanh' => $ngaySHCarbon->format('d/m/Y'),
+                        ];
+                        continue; // Không được xếp vì lịch SH trước hoặc cùng ngày TN
+                    }
+                }
+                // ─────────────────────────────────────────────────────────────
+            }
+            // ────────────────────────────────────────────────────────────────
+
             $coPhiChuaThu = KetQuaThi::where('ho_so_id', $hoSoId)
                 ->whereHas('lichThi', fn($q) => $q
                     ->where('khoa_hoc_id', $lichThi->khoa_hoc_id)
@@ -358,7 +570,15 @@ class ThiController extends Controller
                 ->where('da_thu_phi', false)
                 ->exists();
 
-            if ($coPhiChuaThu) continue;
+            if ($coPhiChuaThu) {
+                $hoSoInfo = HoSoHocVien::find($hoSoId);
+                $errors[] = [
+                    'ho_so_id' => $hoSoId,
+                    'ho_ten'   => $hoSoInfo->ho_ten ?? 'Học viên',
+                    'loai_loi' => 'phi_chua_thu',
+                ];
+                continue;
+            }
 
             // ── Kiểm tra: ngày thi phải SAU ngày nộp hồ sơ ────────────────
             $hoSo        = HoSoHocVien::find($hoSoId);
@@ -398,9 +618,30 @@ class ThiController extends Controller
         ];
 
         if (!empty($errors)) {
-            $tenHV = collect($errors)->pluck('ho_ten')->join(', ');
-            $response['loi_ngay_nop'] = $errors;
-            $response['message'] .= " Có " . count($errors) . " học viên không được xếp vì ngày thi ({$errors[0]['ngay_thi']}) trước ngày nộp hồ sơ: {$tenHV}.";
+            $loiNgayNop   = array_filter($errors, fn($e) => !isset($e['loai_loi']));
+            $loiSHTruocTN = array_filter($errors, fn($e) => ($e['loai_loi'] ?? '') === 'sat_hanh_truoc_tn');
+            $loiPhiChuaThu = array_filter($errors, fn($e) => ($e['loai_loi'] ?? '') === 'phi_chua_thu');
+
+            if (!empty($loiNgayNop)) {
+                $loiNgayNop = array_values($loiNgayNop);
+                $tenHV = collect($loiNgayNop)->pluck('ho_ten')->join(', ');
+                $response['loi_ngay_nop'] = $loiNgayNop;
+                $response['message'] .= " Có " . count($loiNgayNop) . " học viên không được xếp vì ngày thi ({$loiNgayNop[0]['ngay_thi']}) trước ngày nộp hồ sơ: {$tenHV}.";
+            }
+
+            if (!empty($loiSHTruocTN)) {
+                $loiSHTruocTN = array_values($loiSHTruocTN);
+                $tenHV = collect($loiSHTruocTN)->pluck('ho_ten')->join(', ');
+                $response['loi_sat_hanh_truoc_tn'] = $loiSHTruocTN;
+                $response['message'] .= " Có " . count($loiSHTruocTN) . " học viên không được xếp vì lịch sát hạch diễn ra trước hoặc cùng ngày tốt nghiệp: {$tenHV}.";
+            }
+
+            if (!empty($loiPhiChuaThu)) {
+                $loiPhiChuaThu = array_values($loiPhiChuaThu);
+                $tenHV = collect($loiPhiChuaThu)->pluck('ho_ten')->join(', ');
+                $response['loi_phi_chua_thu'] = $loiPhiChuaThu;
+                $response['message'] .= " Có " . count($loiPhiChuaThu) . " học viên chưa đóng phí thi lại (cần vào Quản Lý Học Phí để thu trước): {$tenHV}.";
+            }
         }
 
         return response()->json($response);
@@ -449,17 +690,41 @@ class ThiController extends Controller
         $lichThi = LichThi::findOrFail($lichThiId);
 
         foreach ($request->ket_qua as $kq) {
+            $ketQuaHienTai = KetQuaThi::where('ho_so_id', $kq['ho_so_id'])
+                ->where('lich_thi_id', $lichThiId)
+                ->where('bai_thi_id', $kq['bai_thi_id'])
+                ->first();
+
+            $ketQuaMoi = $kq['ket_qua'] ?? null;
+
+            // ── Nếu kết quả bị sửa từ 'dat' → không đạt/vắng, reset da_thu_phi = false ──
+            // Lần thi lại mới này học viên chưa đóng phí, phải thu lại từ đầu
+            $resetDaThuPhi = false;
+            if ($ketQuaHienTai && $ketQuaHienTai->ket_qua === 'dat'
+                && in_array($ketQuaMoi, ['khong_dat', 'vang_mat'])) {
+                $resetDaThuPhi = true;
+            }
+
+            $updateData = [
+                'diem'     => $kq['diem'] ?? null,
+                'ket_qua'  => $ketQuaMoi,
+                'nhan_xet' => $kq['nhan_xet'] ?? null,
+            ];
+
+            if ($resetDaThuPhi) {
+                $updateData['da_thu_phi'] = false;
+                // Lấy phi_thi_lai từ cấu hình bài thi (không được set null vì cột NOT NULL)
+                $baiThiInfo = \App\Models\BaiThi::find($kq['bai_thi_id']);
+                $updateData['phi_thi_lai'] = $baiThiInfo?->phi_thi_lai ?? 0;
+            }
+
             KetQuaThi::updateOrCreate(
                 [
                     'ho_so_id'    => $kq['ho_so_id'],
                     'lich_thi_id' => $lichThiId,
                     'bai_thi_id'  => $kq['bai_thi_id'],
                 ],
-                [
-                    'diem'     => $kq['diem'] ?? null,
-                    'ket_qua'  => $kq['ket_qua'] ?? null,
-                    'nhan_xet' => $kq['nhan_xet'] ?? null,
-                ]
+                $updateData
             );
         }
 
@@ -489,15 +754,51 @@ class ThiController extends Controller
                     HoSoHocVien::where('id', $hoSoId)
                         ->where('trang_thai', 'chuan_bi_thi')
                         ->update(['trang_thai' => 'du_dieu_kien_thi_tn']);
+
+                    // ── Vắng mặt = chưa đậu TN → xóa khỏi lịch sát hạch chưa có KQ ──
+                    $lichSatHachChuaCoKQ = LichThi::whereIn('khoa_hoc_id', $khoaCungHang)
+                        ->where('loai_thi', 'sat_hanh')
+                        ->pluck('id');
+
+                    if ($lichSatHachChuaCoKQ->isNotEmpty()) {
+                        $lichCoKQ = KetQuaThi::where('ho_so_id', $hoSoId)
+                            ->whereIn('lich_thi_id', $lichSatHachChuaCoKQ)
+                            ->whereNotNull('ket_qua')
+                            ->pluck('lich_thi_id')
+                            ->unique();
+
+                        $lichCanXoa = $lichSatHachChuaCoKQ->diff($lichCoKQ);
+
+                        if ($lichCanXoa->isNotEmpty()) {
+                            LichThiHocVien::where('ho_so_id', $hoSoId)
+                                ->whereIn('lich_thi_id', $lichCanXoa)
+                                ->delete();
+                            KetQuaThi::where('ho_so_id', $hoSoId)
+                                ->whereIn('lich_thi_id', $lichCanXoa)
+                                ->whereNull('ket_qua')
+                                ->delete();
+                        }
+                    }
+                    // ─────────────────────────────────────────────────────────
+
                     continue;
                 }
 
-                $baiDatIds = KetQuaThi::where('ho_so_id', $hoSoId)
+                // Tổng hợp kết quả MỚI NHẤT của từng bài qua tất cả lịch TN
+                // (hỗ trợ thi lại từng bài và xử lý admin sửa kết quả)
+                $kqTatCaBaiTN = KetQuaThi::where('ho_so_id', $hoSoId)
                     ->whereIn('lich_thi_id', $lichThiCungLoai)
-                    ->where('ket_qua', 'dat')
+                    ->whereNotNull('ket_qua')
                     ->whereIn('bai_thi_id', $baiThiIds)
-                    ->pluck('bai_thi_id')
-                    ->unique();
+                    ->select('bai_thi_id', 'ket_qua', 'lich_thi_id')
+                    ->get();
+
+                // Với mỗi bài: lấy kết quả từ lịch thi có id lớn nhất (mới nhất)
+                $ketQuaMoiNhatTN = $kqTatCaBaiTN->groupBy('bai_thi_id')->map(function ($baiRows) {
+                    return $baiRows->sortByDesc('lich_thi_id')->first();
+                });
+
+                $baiDatIds = $ketQuaMoiNhatTN->filter(fn($kq) => $kq->ket_qua === 'dat')->keys();
 
                 $tatCaBaiDat = $baiThiCount > 0 && $baiDatIds->count() >= $baiThiCount;
 
@@ -506,24 +807,63 @@ class ThiController extends Controller
                         ->whereIn('trang_thai', ['chuan_bi_thi', 'du_dieu_kien_thi_tn'])
                         ->update(['trang_thai' => 'hoan_thanh_tn']);
                 } else {
+                    // Học viên chưa đậu đủ tất cả bài TN → rollback về du_dieu_kien_thi_tn
+                    // Bao gồm cả trường hợp admin sửa kết quả từ đạt → không đạt
+                    // nên phải bao gồm cả trang_thai 'hoan_thanh_tn' để reset lại
                     HoSoHocVien::where('id', $hoSoId)
-                        ->where('trang_thai', 'chuan_bi_thi')
+                        ->whereIn('trang_thai', ['chuan_bi_thi', 'hoan_thanh_tn'])
                         ->update(['trang_thai' => 'du_dieu_kien_thi_tn']);
+
+                    // ── Xóa học viên này khỏi các lịch thi SÁT HẠCH chưa có kết quả ──
+                    // Vì học viên chưa đậu tốt nghiệp, không được tham gia thi sát hạch
+                    $lichSatHachChuaCoKQ = LichThi::whereIn('khoa_hoc_id', $khoaCungHang)
+                        ->where('loai_thi', 'sat_hanh')
+                        ->pluck('id');
+
+                    if ($lichSatHachChuaCoKQ->isNotEmpty()) {
+                        // Chỉ xóa khỏi lịch sát hạch mà học viên chưa có kết quả nào
+                        $lichCoKQ = KetQuaThi::where('ho_so_id', $hoSoId)
+                            ->whereIn('lich_thi_id', $lichSatHachChuaCoKQ)
+                            ->whereNotNull('ket_qua')
+                            ->pluck('lich_thi_id')
+                            ->unique();
+
+                        $lichCanXoa = $lichSatHachChuaCoKQ->diff($lichCoKQ);
+
+                        if ($lichCanXoa->isNotEmpty()) {
+                            LichThiHocVien::where('ho_so_id', $hoSoId)
+                                ->whereIn('lich_thi_id', $lichCanXoa)
+                                ->delete();
+                            // Xóa kết quả chưa nhập (null) của các lịch này nếu có
+                            KetQuaThi::where('ho_so_id', $hoSoId)
+                                ->whereIn('lich_thi_id', $lichCanXoa)
+                                ->whereNull('ket_qua')
+                                ->delete();
+                        }
+                    }
+                    // ────────────────────────────────────────────────────────
                 }
             } else {
                 if ($coVangMat) {
                     HoSoHocVien::where('id', $hoSoId)
-                        ->where('trang_thai', 'chuan_bi_thi')
+                        ->whereIn('trang_thai', ['chuan_bi_thi', 'dau_sat_hanh'])
                         ->update(['trang_thai' => 'hoan_thanh_tn']);
                     continue;
                 }
 
-                $baiDatIds = KetQuaThi::where('ho_so_id', $hoSoId)
+                // Tổng hợp kết quả MỚI NHẤT của từng bài qua tất cả lịch sát hạch
+                $kqTatCaBaiSH = KetQuaThi::where('ho_so_id', $hoSoId)
                     ->whereIn('lich_thi_id', $lichThiCungLoai)
-                    ->where('ket_qua', 'dat')
+                    ->whereNotNull('ket_qua')
                     ->whereIn('bai_thi_id', $baiThiIds)
-                    ->pluck('bai_thi_id')
-                    ->unique();
+                    ->select('bai_thi_id', 'ket_qua', 'lich_thi_id')
+                    ->get();
+
+                $ketQuaMoiNhatSH = $kqTatCaBaiSH->groupBy('bai_thi_id')->map(function ($baiRows) {
+                    return $baiRows->sortByDesc('lich_thi_id')->first();
+                });
+
+                $baiDatIds = $ketQuaMoiNhatSH->filter(fn($kq) => $kq->ket_qua === 'dat')->keys();
 
                 $tatCaBaiDat = $baiThiCount > 0 && $baiDatIds->count() >= $baiThiCount;
 
@@ -532,9 +872,11 @@ class ThiController extends Controller
                         ->whereIn('trang_thai', ['chuan_bi_thi', 'hoan_thanh_tn', 'du_dieu_kien_sat_hanh', 'dang_thi_sat_hanh'])
                         ->update(['trang_thai' => 'dau_sat_hanh']);
                 } else {
+                    // Admin sửa kết quả sát hạch từ đạt → không đạt
+                    // Rollback về hoan_thanh_tn (đã đậu TN nhưng chưa đậu SH)
                     HoSoHocVien::where('id', $hoSoId)
-                        ->where('trang_thai', 'chuan_bi_thi')
-                        ->update(['trang_thai' => 'du_dieu_kien_sat_hanh']);
+                        ->whereIn('trang_thai', ['chuan_bi_thi', 'dau_sat_hanh', 'du_dieu_kien_sat_hanh', 'dang_thi_sat_hanh'])
+                        ->update(['trang_thai' => 'hoan_thanh_tn']);
                 }
             }
         }

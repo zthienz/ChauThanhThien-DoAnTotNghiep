@@ -96,6 +96,7 @@ Route::middleware(['auth.jwt', 'role:admin|giang_vien'])->prefix('admin')->group
     Route::get('/khoa-hoc',                 [KhoaHocController::class, 'index']);
     Route::get('/khoa-hoc/{id}',            [KhoaHocController::class, 'show']);
     Route::post('/khoa-hoc',                [KhoaHocController::class, 'store']);
+    Route::post('/khoa-hoc/{id}/update',    [KhoaHocController::class, 'update']); // FormData fallback
     Route::put('/khoa-hoc/{id}',            [KhoaHocController::class, 'update']);
     Route::delete('/khoa-hoc/{id}',         [KhoaHocController::class, 'destroy']);
 
@@ -150,6 +151,7 @@ Route::middleware(['auth.jwt', 'role:admin|giang_vien'])->prefix('admin')->group
     Route::put('/bai-thi/{id}',                                 [BaiThiController::class, 'update']);
     Route::delete('/bai-thi/{id}',                              [BaiThiController::class, 'destroy']);    // ── Học phí ─────────────────────────────────────────────────────────────
     Route::get('/hoc-phi',                         [HocPhiController::class, 'index']);
+    Route::delete('/hoc-phi/{id}',                 [HocPhiController::class, 'destroy']);
     Route::get('/phi-thi-lai',                     [AdminController::class, 'danhSachPhiThiLai']);
     Route::get('/ho-so/{id}/phi-thi-lai-chua-thu', [AdminController::class, 'phiThiLaiChuaThu']);
     Route::post('/ho-so/{id}/phi-thi-lai',         [AdminController::class, 'thuPhiThiLai']);
