@@ -198,7 +198,7 @@ class CapBangController extends Controller
     }
 
     /**
-     * Thu hồi / hủy bằng tốt nghiệp (trường hợp cấp nhầm).
+     * Thu hồi bằng tốt nghiệp (trường hợp cấp nhầm).
      */
     public function huyCBangTN($hoSoId)
     {
@@ -219,6 +219,42 @@ class CapBangController extends Controller
         }
 
         return response()->json(['success' => true, 'message' => 'Đã hủy bằng tốt nghiệp.']);
+    }
+
+    /**
+     * Xóa hoàn toàn bằng tốt nghiệp đã cấp (không thể hoàn tác).
+     * Đồng thời xóa luôn toàn bộ hồ sơ và tài khoản học viên.
+     */
+    public function xoaBangTN($hoSoId)
+    {
+        $hoSo = HoSoHocVien::with(['bangTotNghiep', 'user'])->findOrFail($hoSoId);
+
+        if (!$hoSo->bangTotNghiep) {
+            return response()->json(['success' => false, 'message' => 'Học viên chưa có bằng TN.'], 422);
+        }
+
+        DB::beginTransaction();
+        try {
+            $userId = $hoSo->user_id;
+
+            // Xóa hồ sơ → cascade xóa bang_tot_nghiep, ket_qua_thi,
+            // lich_thi_hoc_vien, hoc_vien_lop, diem_danh, thanh_toan_hoc_phi
+            $hoSo->delete();
+
+            // Xóa tài khoản user nếu là hoc_vien (không xóa admin/giang_vien)
+            if ($userId) {
+                \App\Models\User::where('id', $userId)
+                    ->where('role', 'hoc_vien')
+                    ->delete();
+            }
+
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+
+        return response()->json(['success' => true, 'message' => 'Đã xóa toàn bộ dữ liệu học viên khỏi hệ thống.']);
     }
 
     // ── BẰNG LÁI XE ─────────────────────────────────────────────────────────
@@ -430,5 +466,41 @@ class CapBangController extends Controller
         }
 
         return response()->json(['success' => true, 'message' => 'Đã thu hồi bằng lái xe.']);
+    }
+
+    /**
+     * Xóa hoàn toàn bằng lái xe đã cấp (không thể hoàn tác).
+     * Đồng thời xóa luôn toàn bộ hồ sơ và tài khoản học viên.
+     */
+    public function xoaBangLX($hoSoId)
+    {
+        $hoSo = HoSoHocVien::with(['bangLaiXe', 'user'])->findOrFail($hoSoId);
+
+        if (!$hoSo->bangLaiXe) {
+            return response()->json(['success' => false, 'message' => 'Học viên chưa có bằng lái xe.'], 422);
+        }
+
+        DB::beginTransaction();
+        try {
+            $userId = $hoSo->user_id;
+
+            // Xóa hồ sơ → cascade xóa bang_lai_xe, bang_tot_nghiep, ket_qua_thi,
+            // lich_thi_hoc_vien, hoc_vien_lop, diem_danh, thanh_toan_hoc_phi
+            $hoSo->delete();
+
+            // Xóa tài khoản user nếu là hoc_vien
+            if ($userId) {
+                \App\Models\User::where('id', $userId)
+                    ->where('role', 'hoc_vien')
+                    ->delete();
+            }
+
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+
+        return response()->json(['success' => true, 'message' => 'Đã xóa toàn bộ dữ liệu học viên khỏi hệ thống.']);
     }
 }

@@ -19,10 +19,11 @@ const TT_GV_MAP = {
 
 const emptyForm = {
   ho_ten: '', email: '', password: '', so_dien_thoai: '',
-  chuyen_mon: 'ca_hai', bang_cap: '', nam_kinh_nghiem: 0, ghi_chu: ''
+  chuyen_mon: 'ca_hai', bang_cap: '', nam_kinh_nghiem: '', ghi_chu: ''
 }
 
 const emptyEditForm = {
+  ho_ten: '', email: '', password: '',
   so_dien_thoai: '', chuyen_mon: 'ca_hai',
   bang_cap: '', nam_kinh_nghiem: 0, ghi_chu: ''
 }
@@ -72,6 +73,16 @@ const GiangVienManagement = () => {
     reader.readAsDataURL(file)
   }
 
+  // ── Validation ──
+  const validatePhone = (phone) => {
+    if (!phone) return true // không bắt buộc
+    return /^0\d{9}$/.test(phone)
+  }
+
+  const validateEmail = (email) => {
+    return /^[^\s@]+@gmail\.com$/.test(email)
+  }
+
   // ── Thêm giảng viên ──
   const openAdd = () => {
     setForm(emptyForm)
@@ -81,6 +92,14 @@ const GiangVienManagement = () => {
 
   const handleSave = async e => {
     e.preventDefault()
+    if (!validateEmail(form.email)) {
+      toast.error('Email phải có định dạng @gmail.com')
+      return
+    }
+    if (form.so_dien_thoai && !validatePhone(form.so_dien_thoai)) {
+      toast.error('Số điện thoại phải gồm đúng 10 chữ số và bắt đầu bằng số 0')
+      return
+    }
     try {
       const fd = new FormData()
       Object.entries(form).forEach(([k, v]) => { if (v !== '' && v !== null) fd.append(k, v) })
@@ -100,6 +119,9 @@ const GiangVienManagement = () => {
   const openEditGV = gv => {
     setEditingGV(gv)
     setEditForm({
+      ho_ten:          gv.ho_ten || '',
+      email:           gv.email || '',
+      password:        '',
       so_dien_thoai:   gv.so_dien_thoai || '',
       chuyen_mon:      gv.chuyen_mon || 'ca_hai',
       bang_cap:        gv.bang_cap || '',
@@ -112,6 +134,19 @@ const GiangVienManagement = () => {
 
   const handleSuaGV = async e => {
     e.preventDefault()
+    if (!editForm.ho_ten.trim()) { toast.error('Vui lòng nhập họ và tên'); return }
+    if (!editForm.email.trim()) { toast.error('Vui lòng nhập email'); return }
+    if (!validateEmail(editForm.email)) {
+      toast.error('Email phải có định dạng @gmail.com')
+      return
+    }
+    if (!editForm.so_dien_thoai.trim()) { toast.error('Vui lòng nhập số điện thoại'); return }
+    if (!validatePhone(editForm.so_dien_thoai)) {
+      toast.error('Số điện thoại phải gồm đúng 10 chữ số và bắt đầu bằng số 0')
+      return
+    }
+    if (!editForm.password.trim()) { toast.error('Vui lòng nhập mật khẩu'); return }
+    if (editForm.password.length < 8) { toast.error('Mật khẩu tối thiểu 8 ký tự'); return }
     try {
       const fd = new FormData()
       Object.entries(editForm).forEach(([k, v]) => fd.append(k, v ?? ''))
@@ -465,16 +500,28 @@ const GiangVienManagement = () => {
                     <div className="gv-section-title">👤 Thông Tin Tài Khoản</div>
                     <div className="form-row-2">
                       <div className="form-group"><label>Họ và tên *</label>
-                        <input value={form.ho_ten} onChange={e => setForm({ ...form, ho_ten: e.target.value })} required placeholder="Nguyễn Văn A" />
+                        <input value={form.ho_ten} onChange={e => setForm({ ...form, ho_ten: e.target.value })} required placeholder="VD: Nguyễn Văn A" />
                       </div>
                       <div className="form-group"><label>Email *</label>
-                        <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required placeholder="gv@laixe.com" />
+                        <input type="email" value={form.email}
+                          onChange={e => setForm({ ...form, email: e.target.value })}
+                          required placeholder="gv@gmail.com"
+                          style={form.email && !validateEmail(form.email) ? { borderColor: '#e53e3e' } : {}} />
+                        {form.email && !validateEmail(form.email) && (
+                          <small style={{ color: '#e53e3e' }}>Email phải có định dạng @gmail.com</small>
+                        )}
                       </div>
                       <div className="form-group"><label>Mật khẩu *</label>
-                        <input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required minLength={8} placeholder="Tối thiểu 8 ký tự" />
+                        <input type="text" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required minLength={8} placeholder="Tối thiểu 8 ký tự" />
                       </div>
                       <div className="form-group"><label>Số điện thoại</label>
-                        <input value={form.so_dien_thoai} onChange={e => setForm({ ...form, so_dien_thoai: e.target.value })} placeholder="0901234567" />
+                        <input value={form.so_dien_thoai}
+                          onChange={e => setForm({ ...form, so_dien_thoai: e.target.value })}
+                          placeholder="0901234567" maxLength={10}
+                          style={form.so_dien_thoai && !validatePhone(form.so_dien_thoai) ? { borderColor: '#e53e3e' } : {}} />
+                        {form.so_dien_thoai && !validatePhone(form.so_dien_thoai) && (
+                          <small style={{ color: '#e53e3e' }}>Phải gồm đúng 10 chữ số và bắt đầu bằng số 0</small>
+                        )}
                       </div>
                     </div>
 
@@ -488,7 +535,7 @@ const GiangVienManagement = () => {
                         </select>
                       </div>
                       <div className="form-group"><label>Năm kinh nghiệm</label>
-                        <input type="number" min={0} value={form.nam_kinh_nghiem} onChange={e => setForm({ ...form, nam_kinh_nghiem: e.target.value })} />
+                        <input type="number" min={0} value={form.nam_kinh_nghiem} onChange={e => setForm({ ...form, nam_kinh_nghiem: e.target.value })} placeholder="VD: 5" />
                       </div>
                     </div>
                     <div className="form-group"><label>Bằng cấp</label>
@@ -547,9 +594,36 @@ const GiangVienManagement = () => {
 
                   {/* Cột thông tin */}
                   <div className="gv-info-col">
-                    <div className="gv-section-title">📞 Thông Tin Liên Hệ</div>
-                    <div className="form-group"><label>Số điện thoại</label>
-                      <input value={editForm.so_dien_thoai} onChange={e => setEditForm({ ...editForm, so_dien_thoai: e.target.value })} placeholder="0901234567" />
+                    <div className="gv-section-title">👤 Thông Tin Tài Khoản</div>
+                    <div className="form-row-2">
+                      <div className="form-group"><label>Họ và tên *</label>
+                        <input value={editForm.ho_ten}
+                          onChange={e => setEditForm({ ...editForm, ho_ten: e.target.value })}
+                          required placeholder="Nguyễn Văn A" />
+                      </div>
+                      <div className="form-group"><label>Email *</label>
+                        <input type="text" value={editForm.email}
+                          onChange={e => setEditForm({ ...editForm, email: e.target.value })}
+                          required placeholder="gv@gmail.com"
+                          style={editForm.email && !validateEmail(editForm.email) ? { borderColor: '#e53e3e' } : {}} />
+                        {editForm.email && !validateEmail(editForm.email) && (
+                          <small style={{ color: '#e53e3e' }}>Email phải có định dạng @gmail.com</small>
+                        )}
+                      </div>
+                      <div className="form-group"><label>Mật khẩu *</label>
+                        <input type="text" value={editForm.password}
+                          onChange={e => setEditForm({ ...editForm, password: e.target.value })}
+                          required placeholder="Tối thiểu 8 ký tự" />
+                      </div>
+                      <div className="form-group"><label>Số điện thoại *</label>
+                        <input value={editForm.so_dien_thoai}
+                          onChange={e => setEditForm({ ...editForm, so_dien_thoai: e.target.value })}
+                          required placeholder="0901234567" maxLength={10}
+                          style={editForm.so_dien_thoai && !validatePhone(editForm.so_dien_thoai) ? { borderColor: '#e53e3e' } : {}} />
+                        {editForm.so_dien_thoai && !validatePhone(editForm.so_dien_thoai) && (
+                          <small style={{ color: '#e53e3e' }}>Phải gồm đúng 10 chữ số và bắt đầu bằng số 0</small>
+                        )}
+                      </div>
                     </div>
 
                     <div className="gv-section-title" style={{ marginTop: 8 }}>🎓 Chuyên Môn</div>

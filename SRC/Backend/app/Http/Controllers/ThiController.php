@@ -12,16 +12,29 @@ use App\Models\ChungChi;
 use App\Models\HocVienLop;
 use App\Models\HoSoHocVien;
 use App\Models\LopHoc;
+use App\Models\DiemDanh;
+use App\Models\LichHoc;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Carbon\Carbon;
 
 class ThiController extends Controller
 {
     /**
-     * Lấy bài thi của một khóa học theo loại thi.
-     * Nếu khóa đào tạo theo tháng (có ma_khoa) chưa có bài thi riêng,
-     * tự động kế thừa từ khóa danh mục cùng loai_bang.
+     * Lấy ngày buổi học cuối cùng mà học viên có mặt (trong các lớp thuộc lopIds).
+     * Trả về Carbon hoặc null nếu chưa có buổi nào.
      */
+    private function getNgayBuoiHocCuoi(int $hoSoId, \Illuminate\Support\Collection $lopIds): ?Carbon
+    {
+        $ngay = DiemDanh::where('diem_danh.ho_so_id', $hoSoId)
+            ->where('diem_danh.co_mat', true)
+            ->join('lich_hoc', 'diem_danh.lich_hoc_id', '=', 'lich_hoc.id')
+            ->whereIn('lich_hoc.lop_hoc_id', $lopIds)
+            ->max('lich_hoc.ngay_hoc');
+
+        return $ngay ? Carbon::parse($ngay)->startOfDay() : null;
+    }
+
     private function getBaiThiCuaKhoa(int $khoaHocId, string $loaiThi): \Illuminate\Support\Collection
     {
         $khoa   = KhoaHoc::findOrFail($khoaHocId);
@@ -239,7 +252,7 @@ class ThiController extends Controller
         }
         // ─────────────────────────────────────────────────────────────────────
 
-        $mapHocVien = function ($hvl) use ($lichThi, $hoSoDaDauTNChoSH, $ngayDauTNTheoHoSo) {
+        $mapHocVien = function ($hvl) use ($lichThi, $hoSoDaDauTNChoSH, $ngayDauTNTheoHoSo, $lopIds) {
             $hoSo = $hvl->hoSo;
             $coPhiChuaThu = KetQuaThi::where('ho_so_id', $hoSo->id)
                 ->whereHas('lichThi', fn($q) => $q
@@ -254,6 +267,17 @@ class ThiController extends Controller
             $ngayNopHoSo = \Carbon\Carbon::parse($hoSo->created_at)->startOfDay();
             $ngayThi     = \Carbon\Carbon::parse($lichThi->ngay_thi)->startOfDay();
             $lichThiTruocNopHoSo = $ngayThi->lt($ngayNopHoSo);
+
+            // ── Kiểm tra: ngày thi phải SAU ngày hoàn thành tiến độ học ──
+            $ngayHoanThanhTienDo = $this->getNgayBuoiHocCuoi($hoSo->id, $lopIds);
+            $lichThiTruocHoanThanh = false;
+            $ngayHoanThanhFmt = null;
+            if ($ngayHoanThanhTienDo) {
+                $ngayHoanThanhFmt      = $ngayHoanThanhTienDo->format('d/m/Y');
+                // Lịch thi phải SAU ngày hoàn thành (ngày thi > ngày buổi cuối)
+                $lichThiTruocHoanThanh = $ngayThi->lte($ngayHoanThanhTienDo);
+            }
+            // ────────────────────────────────────────────────────────────────
 
             // ── Kiểm tra: lịch sát hạch phải SAU ngày đậu tốt nghiệp của học viên ──
             $lichSatHachTruocTN = false;
@@ -270,27 +294,30 @@ class ThiController extends Controller
             // ─────────────────────────────────────────────────────────────────
 
             return [
-                'ho_so_id'                 => $hoSo->id,
-                'ho_ten'                   => $hoSo->ho_ten,
-                'so_cccd'                  => $hoSo->so_cccd,
-                'ngay_sinh'                => $hoSo->ngay_sinh,
-                'so_dien_thoai'            => $hoSo->so_dien_thoai,
-                'trang_thai'               => $hoSo->trang_thai,
-                'ten_lop'                  => $hvl->lopHoc->ten_lop ?? '—',
-                'so_buoi_ly_thuyet_da_hoc' => $hvl->so_buoi_ly_thuyet_da_hoc,
-                'so_km_da_chay'            => $hvl->so_km_da_chay,
-                'du_buoi_ly_thuyet'        => $hvl->du_buoi_ly_thuyet,
-                'du_km_thuc_hanh'          => $hvl->du_km_thuc_hanh,
-                'co_phi_chua_thu'          => $coPhiChuaThu,
-                'lich_thi_truoc_nop_ho_so' => $lichThiTruocNopHoSo,
-                'ngay_nop_ho_so'           => $ngayNopHoSo->format('d/m/Y'),
+                'ho_so_id'                   => $hoSo->id,
+                'ho_ten'                     => $hoSo->ho_ten,
+                'so_cccd'                    => $hoSo->so_cccd,
+                'ngay_sinh'                  => $hoSo->ngay_sinh,
+                'so_dien_thoai'              => $hoSo->so_dien_thoai,
+                'trang_thai'                 => $hoSo->trang_thai,
+                'ten_lop'                    => $hvl->lopHoc->ten_lop ?? '—',
+                'so_buoi_ly_thuyet_da_hoc'   => $hvl->so_buoi_ly_thuyet_da_hoc,
+                'so_km_da_chay'              => $hvl->so_km_da_chay,
+                'du_buoi_ly_thuyet'          => $hvl->du_buoi_ly_thuyet,
+                'du_km_thuc_hanh'            => $hvl->du_km_thuc_hanh,
+                'co_phi_chua_thu'            => $coPhiChuaThu,
+                'lich_thi_truoc_nop_ho_so'   => $lichThiTruocNopHoSo,
+                'ngay_nop_ho_so'             => $ngayNopHoSo->format('d/m/Y'),
+                // Ngày hoàn thành tiến độ học (buổi có mặt cuối cùng)
+                'lich_thi_truoc_hoan_thanh'  => $lichThiTruocHoanThanh,
+                'ngay_hoan_thanh_tien_do'    => $ngayHoanThanhFmt,
                 // Cờ cho lịch sát hạch: học viên chưa đậu tốt nghiệp
-                'chua_dau_tot_nghiep'      => $lichThi->loai_thi === 'sat_hanh'
-                                                ? !$hoSoDaDauTNChoSH->contains($hoSo->id)
-                                                : false,
+                'chua_dau_tot_nghiep'        => $lichThi->loai_thi === 'sat_hanh'
+                                                    ? !$hoSoDaDauTNChoSH->contains($hoSo->id)
+                                                    : false,
                 // Cờ cho lịch sát hạch: lịch SH diễn ra trước hoặc cùng ngày thi TN của học viên
-                'lich_sat_hanh_truoc_tn'   => $lichSatHachTruocTN,
-                'ngay_dau_tot_nghiep'      => $ngayDauTNFmt,
+                'lich_sat_hanh_truoc_tn'     => $lichSatHachTruocTN,
+                'ngay_dau_tot_nghiep'        => $ngayDauTNFmt,
             ];
         };
 
@@ -596,7 +623,24 @@ class ThiController extends Controller
             }
             // ────────────────────────────────────────────────────────────────
 
-            LichThiHocVien::create(['lich_thi_id' => $lichThiId, 'ho_so_id' => $hoSoId]);
+            // ── Kiểm tra: ngày thi phải SAU ngày hoàn thành tiến độ học ────
+            // Ngày hoàn thành = ngày buổi học (có mặt) cuối cùng của học viên.
+            // Lịch thi phải là ngày HÔM SAU hoặc muộn hơn, không được cùng ngày.
+            $ngayBuoiCuoi = $this->getNgayBuoiHocCuoi($hoSoId, $lopIds);
+            if ($ngayBuoiCuoi && $ngayThi->lte($ngayBuoiCuoi)) {
+                $errors[] = [
+                    'ho_so_id'               => $hoSoId,
+                    'ho_ten'                 => $hoSo->ho_ten,
+                    'loai_loi'               => 'lich_thi_truoc_hoan_thanh',
+                    'ngay_hoan_thanh'        => $ngayBuoiCuoi->format('d/m/Y'),
+                    'ngay_thi'               => $ngayThi->format('d/m/Y'),
+                    'ngay_som_nhat_duoc_thi' => $ngayBuoiCuoi->copy()->addDay()->format('d/m/Y'),
+                ];
+                continue;
+            }
+            // ────────────────────────────────────────────────────────────────
+
+            \App\Models\LichThiHocVien::create(['lich_thi_id' => $lichThiId, 'ho_so_id' => $hoSoId]);
 
             if ($lichThi->loai_thi === 'sat_hanh') {
                 HoSoHocVien::where('id', $hoSoId)
@@ -618,9 +662,10 @@ class ThiController extends Controller
         ];
 
         if (!empty($errors)) {
-            $loiNgayNop   = array_filter($errors, fn($e) => !isset($e['loai_loi']));
-            $loiSHTruocTN = array_filter($errors, fn($e) => ($e['loai_loi'] ?? '') === 'sat_hanh_truoc_tn');
-            $loiPhiChuaThu = array_filter($errors, fn($e) => ($e['loai_loi'] ?? '') === 'phi_chua_thu');
+            $loiNgayNop        = array_filter($errors, fn($e) => !isset($e['loai_loi']));
+            $loiSHTruocTN      = array_filter($errors, fn($e) => ($e['loai_loi'] ?? '') === 'sat_hanh_truoc_tn');
+            $loiPhiChuaThu     = array_filter($errors, fn($e) => ($e['loai_loi'] ?? '') === 'phi_chua_thu');
+            $loiTruocHoanThanh = array_filter($errors, fn($e) => ($e['loai_loi'] ?? '') === 'lich_thi_truoc_hoan_thanh');
 
             if (!empty($loiNgayNop)) {
                 $loiNgayNop = array_values($loiNgayNop);
@@ -641,6 +686,13 @@ class ThiController extends Controller
                 $tenHV = collect($loiPhiChuaThu)->pluck('ho_ten')->join(', ');
                 $response['loi_phi_chua_thu'] = $loiPhiChuaThu;
                 $response['message'] .= " Có " . count($loiPhiChuaThu) . " học viên chưa đóng phí thi lại (cần vào Quản Lý Học Phí để thu trước): {$tenHV}.";
+            }
+
+            if (!empty($loiTruocHoanThanh)) {
+                $loiTruocHoanThanh = array_values($loiTruocHoanThanh);
+                $tenHV = collect($loiTruocHoanThanh)->pluck('ho_ten')->join(', ');
+                $response['loi_truoc_hoan_thanh'] = $loiTruocHoanThanh;
+                $response['message'] .= " Có " . count($loiTruocHoanThanh) . " học viên không được xếp vì ngày thi chưa đủ cách ngày hoàn thành tiến độ học: {$tenHV}.";
             }
         }
 

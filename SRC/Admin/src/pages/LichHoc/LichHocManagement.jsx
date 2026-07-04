@@ -5,10 +5,16 @@ import { useAdmin } from '../../context/AdminContext'
 import './LichHocManagement.css'
 
 // ── Helpers ──
-// Lấy phần ngày từ chuỗi date (xử lý cả "2026-05-24" lẫn "2026-05-24 00:00:00")
+// Lấy phần ngày từ chuỗi date (xử lý cả "2026-05-24" lẫn "2026-05-24 00:00:00" lẫn Date object)
+// Dùng local timezone để tránh lệch ngày khi chuyển sang UTC
 const fmt = d => {
-  const s = typeof d === 'string' ? d : new Date(d).toISOString()
-  return s.slice(0, 10)
+  if (!d) return ''
+  if (typeof d === 'string') return d.slice(0, 10)
+  // Date object → lấy theo local time, không dùng toISOString() (UTC)
+  const year  = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day   = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 const DAY_FULL = ['Chủ Nhật','Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7']
 const DAY_SHORT= ['CN','T2','T3','T4','T5','T6','T7']
@@ -123,6 +129,35 @@ const LichHocManagement = () => {
     setXeBanIds([])
     setForm({ lop_hoc_id:'', ngay_hoc: ngayHoc, gio_bat_dau:'', gio_ket_thuc:'', loai_buoi:'ly_thuyet', dia_diem:'', noi_dung:'', xe_id:'' })
     setShowModal(true)
+  }
+
+  // Helper: kiểm tra giờ làm việc (7:00 – 19:00, bắt đầu tối đa 16:00)
+  const getGioLamViecWarning = (gioBatDau, gioKetThuc) => {
+    if (!gioBatDau && !gioKetThuc) return null
+    const toMinutes = (timeStr) => {
+      if (!timeStr) return null
+      const [h, m] = timeStr.slice(0, 5).split(':').map(Number)
+      return h * 60 + m
+    }
+    const START_MIN = 7 * 60    // 7:00
+    const END_MIN   = 19 * 60   // 19:00
+
+    const bdMin = toMinutes(gioBatDau)
+    const ktMin = toMinutes(gioKetThuc)
+
+    if (bdMin !== null && bdMin < START_MIN) {
+      return '⛔ Giờ bắt đầu không được trước 7:00 sáng.'
+    }
+    if (bdMin !== null && bdMin >= END_MIN) {
+      return '⛔ Giờ bắt đầu từ 19:00 trở đi là ngoài giờ làm việc. Vui lòng chọn giờ bắt đầu trước 19:00.'
+    }
+    if (ktMin !== null && ktMin > END_MIN) {
+      return '⛔ Giờ kết thúc vượt quá 19:00 — ngoài giờ làm việc. Thời gian kết thúc tối đa là 19:00.'
+    }
+    if (bdMin !== null && ktMin !== null && ktMin <= bdMin) {
+      return '⛔ Giờ kết thúc phải sau giờ bắt đầu.'
+    }
+    return null
   }
 
   // Helper: kiểm tra cảnh báo GV theo lớp + loại buổi đang chọn
@@ -494,7 +529,7 @@ const LichHocManagement = () => {
                 <div className="form-group"><label>Lớp học *</label>
                   <select value={form.lop_hoc_id} onChange={e=>setForm({...form,lop_hoc_id:e.target.value,xe_id:''})} required>
                     <option value="">-- Chọn lớp --</option>
-                    {lopList.map(l => <option key={l.id} value={l.id}>{l.ten_lop}</option>)}
+                    {lopList.filter(l => l.trang_thai !== 'da_ket_thuc').map(l => <option key={l.id} value={l.id}>{l.ten_lop}</option>)}
                   </select>
                   {(() => {
                     const warn = getGvWarning(form.lop_hoc_id, form.loai_buoi)
@@ -516,12 +551,20 @@ const LichHocManagement = () => {
                     </select>
                   </div>
                   <div className="form-group"><label>Giờ bắt đầu *</label>
-                    <input type="time" value={form.gio_bat_dau} onChange={e=>setForm({...form,gio_bat_dau:e.target.value})} required />
+                    <input type="time" value={form.gio_bat_dau} onChange={e=>setForm({...form,gio_bat_dau:e.target.value})} required min="07:00" max="18:59" />
                   </div>
                   <div className="form-group"><label>Giờ kết thúc *</label>
-                    <input type="time" value={form.gio_ket_thuc} onChange={e=>setForm({...form,gio_ket_thuc:e.target.value})} required />
+                    <input type="time" value={form.gio_ket_thuc} onChange={e=>setForm({...form,gio_ket_thuc:e.target.value})} required min="07:00" max="19:00" />
                   </div>
                 </div>
+                {(() => {
+                  const gioWarn = getGioLamViecWarning(form.gio_bat_dau, form.gio_ket_thuc)
+                  return gioWarn ? (
+                    <div style={{marginBottom:12,padding:'10px 14px',background:'#fee2e2',border:'1px solid #ef4444',borderRadius:8,fontSize:13,color:'#991b1b',fontWeight:500}}>
+                      {gioWarn}
+                    </div>
+                  ) : null
+                })()}
                 <div className="form-group"><label>Địa điểm</label>
                   <input value={form.dia_diem} onChange={e=>setForm({...form,dia_diem:e.target.value})} placeholder="VD: Phòng 101, Sân tập A" />
                 </div>
@@ -590,11 +633,13 @@ const LichHocManagement = () => {
                   type="submit"
                   className="btn btn-primary"
                   disabled={
+                    !!getGioLamViecWarning(form.gio_bat_dau, form.gio_ket_thuc) ||
                     !!getGvWarning(form.lop_hoc_id, form.loai_buoi) ||
                     !!getXeWarning(form.lop_hoc_id, form.loai_buoi, form.xe_id) ||
                     (form.loai_buoi === 'thuc_hanh' && !!form.xe_id && xeBanIds.includes(String(form.xe_id)))
                   }
                   title={
+                    getGioLamViecWarning(form.gio_bat_dau, form.gio_ket_thuc) ||
                     getGvWarning(form.lop_hoc_id, form.loai_buoi) ||
                     getXeWarning(form.lop_hoc_id, form.loai_buoi, form.xe_id) ||
                     (form.loai_buoi === 'thuc_hanh' && form.xe_id && xeBanIds.includes(String(form.xe_id))

@@ -27,14 +27,15 @@ const kiemTraTuoi = (ngaySinh, khoaHocId, khoaList) => {
 }
 
 const TRANG_THAI_MAP = {
-  cho_dong_hoc_phi:      { text:'Chờ đóng HP',       cls:'badge-warning' },
-  cho_mo_lop:            { text:'Chờ mở lớp',         cls:'badge-info' },
-  dang_hoc:              { text:'Đang học',            cls:'badge-success' },
-  du_dieu_kien_thi_tn:   { text:'Đủ ĐK thi TN',       cls:'badge-blue' },
-  chuan_bi_thi:          { text:'Chuẩn bị thi',        cls:'badge-warning' },
-  hoan_thanh_tn:         { text:'Hoàn thành TN',       cls:'badge-success' },
-  // Các trạng thái giai đoạn sát hạch → chỉ hiện ở trang Cấp Bằng
-  // du_dieu_kien_sat_hanh, dang_thi_sat_hanh, dau_sat_hanh, da_cap_bang không hiện ở đây
+  cho_dong_hoc_phi:      { text:'Chờ đóng HP',              cls:'badge-warning' },
+  cho_mo_lop:            { text:'Chờ mở lớp',               cls:'badge-info' },
+  dang_hoc:              { text:'Đang học',                  cls:'badge-success' },
+  du_dieu_kien_thi_tn:   { text:'Đủ ĐK thi TN',             cls:'badge-blue' },
+  chuan_bi_thi:          { text:'Chuẩn bị thi',              cls:'badge-warning' },
+  hoan_thanh_tn:         { text:'Hoàn thành TN',             cls:'badge-success' },
+  du_dieu_kien_sat_hanh: { text:'Đủ ĐK sát hạch',           cls:'badge-blue' },
+  dang_thi_sat_hanh:     { text:'Đang thi sát hạch',        cls:'badge-warning' },
+  // dau_sat_hanh, da_cap_bang không hiện ở đây → chỉ hiện ở trang Cấp Bằng
 }
 
 const HoSoManagement = () => {
@@ -368,30 +369,75 @@ const HoSoManagement = () => {
 
       {/* ── Stat cards trạng thái học viên ── */}
       {stats && (
-        <div className="hoso-stats-row">
-          {[
-            { key: 'cho_dong_hoc_phi', label: 'Chờ đóng HP',    value: stats.choDongHocPhi  || 0, color: '#f59e0b', icon: '💰' },
-            { key: 'cho_mo_lop',       label: 'Chờ mở lớp',     value: stats.choMoLop       || 0, color: '#3b82f6', icon: '⏳' },
-            { key: 'dang_hoc',         label: 'Đang học',        value: stats.dangHoc        || 0, color: '#10b981', icon: '📚' },
-            { key: 'du_dieu_kien_thi_tn', label: 'Đủ ĐK thi TN', value: stats.duDieuKienThi || 0, color: '#06b6d4', icon: '✅' },
-            { key: 'chuan_bi_thi',     label: 'Chuẩn bị thi',   value: stats.chuanBiThi     || 0, color: '#f97316', icon: '📝' },
-            { key: 'hoan_thanh_tn',    label: 'Hoàn thành TN',  value: stats.dauTotNghiep   || 0, color: '#8b5cf6', icon: '🎓' },
-          ].map(s => (
+        <div className="hoso-stats-wrap">
+          {/* Hàng trên: Tổng hồ sơ + 4 trạng thái đầu */}
+          <div className="hoso-stats-row hoso-stats-row-top">
+            {/* Card Tổng hồ sơ — luôn hiển thị, click để bỏ filter */}
             <button
-              key={s.key}
-              className={`hoso-stat-card ${filterTT === s.key ? 'active' : ''}`}
-              style={{ '--sc': s.color }}
-              onClick={() => { setFilterTT(filterTT === s.key ? '' : s.key); setPage(1) }}
-              title={`Lọc: ${s.label}`}
+              className={`hoso-stat-card hoso-stat-card-total ${filterTT === '' ? 'active' : ''}`}
+              style={{ '--sc': '#0d47a1' }}
+              onClick={() => { setFilterTT(''); setPage(1) }}
+              title="Xem tất cả hồ sơ"
             >
-              <span className="hsc-icon">{s.icon}</span>
+              <span className="hsc-icon">📋</span>
               <div className="hsc-body">
-                <span className="hsc-value">{s.value}</span>
-                <span className="hsc-label">{s.label}</span>
+                <span className="hsc-value">
+                  {(stats.choDongHocPhi || 0) + (stats.choMoLop || 0) + (stats.dangHoc || 0) +
+                   (stats.duDieuKienThi || 0) + (stats.chuanBiThi || 0) + (stats.dauTotNghiep || 0) +
+                   (stats.duDieuKienSatHanh || 0) + (stats.dangThiSatHanh || 0)}
+                </span>
+                <span className="hsc-label">Tổng Hồ Sơ</span>
               </div>
-              {filterTT === s.key && <span className="hsc-active-dot" />}
+              {filterTT === '' && <span className="hsc-active-dot" />}
             </button>
-          ))}
+
+            {[
+              { key: 'cho_dong_hoc_phi', label: 'Chờ đóng HP',    value: stats.choDongHocPhi  || 0, color: '#f59e0b', icon: '💰' },
+              { key: 'cho_mo_lop',       label: 'Chờ mở lớp',     value: stats.choMoLop       || 0, color: '#3b82f6', icon: '⏳' },
+              { key: 'dang_hoc',         label: 'Đang học',        value: stats.dangHoc        || 0, color: '#10b981', icon: '📚' },
+              { key: 'du_dieu_kien_thi_tn', label: 'Đủ ĐK thi TN', value: stats.duDieuKienThi || 0, color: '#06b6d4', icon: '✅' },
+            ].map(s => (
+              <button
+                key={s.key}
+                className={`hoso-stat-card ${filterTT === s.key ? 'active' : ''}`}
+                style={{ '--sc': s.color }}
+                onClick={() => { setFilterTT(filterTT === s.key ? '' : s.key); setPage(1) }}
+                title={`Lọc: ${s.label}`}
+              >
+                <span className="hsc-icon">{s.icon}</span>
+                <div className="hsc-body">
+                  <span className="hsc-value">{s.value}</span>
+                  <span className="hsc-label">{s.label}</span>
+                </div>
+                {filterTT === s.key && <span className="hsc-active-dot" />}
+              </button>
+            ))}
+          </div>
+
+          {/* Hàng dưới: 4 trạng thái còn lại */}
+          <div className="hoso-stats-row hoso-stats-row-bot">
+            {[
+              { key: 'chuan_bi_thi',          label: 'Chuẩn bị thi',    value: stats.chuanBiThi           || 0, color: '#f97316', icon: '📝' },
+              { key: 'hoan_thanh_tn',          label: 'Hoàn thành TN',   value: stats.dauTotNghiep         || 0, color: '#8b5cf6', icon: '🎓' },
+              { key: 'du_dieu_kien_sat_hanh',  label: 'Đủ ĐK sát hạch', value: stats.duDieuKienSatHanh    || 0, color: '#06b6d4', icon: '🏁' },
+              { key: 'dang_thi_sat_hanh',      label: 'Đang thi SH',     value: stats.dangThiSatHanh       || 0, color: '#f59e0b', icon: '✍️' },
+            ].map(s => (
+              <button
+                key={s.key}
+                className={`hoso-stat-card ${filterTT === s.key ? 'active' : ''}`}
+                style={{ '--sc': s.color }}
+                onClick={() => { setFilterTT(filterTT === s.key ? '' : s.key); setPage(1) }}
+                title={`Lọc: ${s.label}`}
+              >
+                <span className="hsc-icon">{s.icon}</span>
+                <div className="hsc-body">
+                  <span className="hsc-value">{s.value}</span>
+                  <span className="hsc-label">{s.label}</span>
+                </div>
+                {filterTT === s.key && <span className="hsc-active-dot" />}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

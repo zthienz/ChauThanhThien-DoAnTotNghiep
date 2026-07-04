@@ -181,9 +181,11 @@ Route::middleware(['auth.jwt', 'role:admin|giang_vien'])->prefix('admin')->group
     Route::get('/cap-bang/tot-nghiep',             [CapBangController::class, 'danhSachCapBangTN']);
     Route::post('/cap-bang/tot-nghiep/{id}',       [CapBangController::class, 'capBangTN']);
     Route::delete('/cap-bang/tot-nghiep/{id}',     [CapBangController::class, 'huyCBangTN']);
+    Route::delete('/cap-bang/tot-nghiep/{id}/xoa', [CapBangController::class, 'xoaBangTN']);
     Route::get('/cap-bang/bang-lai',               [CapBangController::class, 'danhSachCapBangLX']);
     Route::post('/cap-bang/bang-lai/{id}',         [CapBangController::class, 'capBangLX']);
     Route::delete('/cap-bang/bang-lai/{id}',       [CapBangController::class, 'huyCBangLX']);
+    Route::delete('/cap-bang/bang-lai/{id}/xoa',   [CapBangController::class, 'xoaBangLX']);
 
     // ── Báo lỗi xe (admin xem & xử lý) ─────────────────────────────────────
     Route::get('/bao-loi-xe',               [XeController::class, 'danhSachBaoLoi']);

@@ -5,7 +5,7 @@ import { useTeacher } from '../../context/TeacherContext'
 import './GVLichHoc.css'
 
 // ── Helpers ──
-const fmt = d => { const s = typeof d === 'string' ? d : new Date(d).toISOString(); return s.slice(0, 10) }
+const fmt = d => { if (!d) return ''; if (typeof d === 'string') return d.slice(0,10); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
 const DAY_FULL  = ['Chủ Nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7']
 const HOUR_START = 7, HOUR_END = 18, SLOT_MIN = 60
 const TOTAL_SLOTS = (HOUR_END - HOUR_START) * (60 / SLOT_MIN)

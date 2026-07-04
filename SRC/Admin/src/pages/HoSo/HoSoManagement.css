@@ -356,10 +356,35 @@
 }
 
 /* ── Stat cards trạng thái học viên ── */
+.hoso-stats-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .hoso-stats-row {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
   gap: 12px;
+}
+
+/* Hàng trên: Tổng hồ sơ + 4 trạng thái = 5 cột */
+.hoso-stats-row-top {
+  grid-template-columns: repeat(5, 1fr);
+}
+
+/* Hàng dưới: 4 trạng thái = 4 cột */
+.hoso-stats-row-bot {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+/* Card Tổng hồ sơ — highlight đặc biệt */
+.hoso-stat-card-total {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-color: #bfdbfe !important;
+}
+.hoso-stat-card-total.active {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  border-color: #0d47a1 !important;
 }
 
 .hoso-stat-card {
@@ -407,11 +432,17 @@
   background: var(--sc);
 }
 
+@media (max-width: 1200px) {
+  .hoso-stats-row-top { grid-template-columns: repeat(3, 1fr); }
+  .hoso-stats-row-bot { grid-template-columns: repeat(3, 1fr); }
+}
 @media (max-width: 1100px) {
-  .hoso-stats-row { grid-template-columns: repeat(3, 1fr); }
+  .hoso-stats-row-top { grid-template-columns: repeat(3, 1fr); }
+  .hoso-stats-row-bot { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 700px) {
-  .hoso-stats-row { grid-template-columns: repeat(2, 1fr); }
+  .hoso-stats-row-top { grid-template-columns: repeat(2, 1fr); }
+  .hoso-stats-row-bot { grid-template-columns: repeat(2, 1fr); }
 }
 
 /* ── Modal Xếp Lớp — danh sách card ── */

@@ -5,7 +5,7 @@ import { useTeacher } from '../../context/TeacherContext'
 import './Dashboard.css'
 
 // ── Timetable helpers ──
-const fmtD = d => { const s = typeof d === 'string' ? d : new Date(d).toISOString(); return s.slice(0, 10) }
+const fmtD = d => { if (!d) return ''; if (typeof d === 'string') return d.slice(0,10); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
 const DAY_SHORT = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']
 const HS = 7, HE = 18, SM = 60, SH = 26
 const TS = (HE - HS) * (60 / SM)

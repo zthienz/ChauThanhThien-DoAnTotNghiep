@@ -4,7 +4,7 @@ import { toast } from 'react-toastify'
 import { useAdmin } from '../../context/AdminContext'
 import './GVDiemDanh.css'
 
-const fmt = d => { const s = typeof d === 'string' ? d : new Date(d).toISOString(); return s.slice(0,10) }
+const fmt = d => { if (!d) return ''; if (typeof d === 'string') return d.slice(0,10); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
 
 const GVDiemDanh = () => {
   const { token, backendUrl, chuyenMon } = useAdmin()

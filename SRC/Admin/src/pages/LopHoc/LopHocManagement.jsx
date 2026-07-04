@@ -198,12 +198,16 @@ const LopHocManagement = () => {
 
   // ── Thêm học viên vào lớp ──
   const openAddHV = async lop => {
-    setTargetLop(lop)
     setHvSelected([])
     setHvSearch('')
     setHvLoading(true)
     setShowAddHV(true)
     try {
+      // Fetch lại thông tin lớp mới nhất để có hoc_vien_count chính xác
+      const lopRes = await axios.get(`${backendUrl}/api/admin/lop-hoc/${lop.id}`, { headers })
+      const lopMoiNhat = lopRes.data.success ? lopRes.data.data : lop
+      setTargetLop({ ...lop, hoc_vien_count: lopMoiNhat.hoc_vien_lop?.length ?? lop.hoc_vien_count })
+
       // Lấy học viên đủ điều kiện: đã đóng HP, chờ mở lớp, đúng hạng bằng của lớp
       const loaiBang = lop.khoa_hoc?.loai_bang
       const res = await axios.get(`${backendUrl}/api/admin/ho-so`, {
@@ -225,17 +229,34 @@ const LopHocManagement = () => {
 
   const handleAddHV = async () => {
     if (hvSelected.length === 0) { toast.warning('Chưa chọn học viên nào'); return }
+
+    // Kiểm tra lớp còn chỗ trống không
+    const choTrong = targetLop.si_so_toi_da - (targetLop.hoc_vien_count || 0)
+    if (choTrong <= 0) {
+      toast.error(`Lớp "${targetLop.ten_lop}" đã đầy (${targetLop.si_so_toi_da}/${targetLop.si_so_toi_da} học viên), không thể thêm.`)
+      return
+    }
+    if (hvSelected.length > choTrong) {
+      toast.warning(`Lớp chỉ còn ${choTrong} chỗ trống, bạn đang chọn ${hvSelected.length} học viên. Vui lòng bỏ bớt.`)
+      return
+    }
+
     try {
       // Xếp từng học viên vào lớp
       let success = 0
+      const errors = []
       for (const hoSoId of hvSelected) {
         try {
           await axios.post(`${backendUrl}/api/admin/ho-so/${hoSoId}/xep-lop`,
             { lop_hoc_id: targetLop.id }, { headers })
           success++
-        } catch {}
+        } catch (err) {
+          const msg = err.response?.data?.message || 'Lỗi không xác định'
+          errors.push(msg)
+        }
       }
-      toast.success(`Đã thêm ${success} học viên vào lớp`)
+      if (success > 0) toast.success(`Đã thêm ${success} học viên vào lớp`)
+      if (errors.length > 0) toast.error(errors[0])
       setShowAddHV(false)
       fetchAll()
       if (viewItem?.id === targetLop.id) openView({ id: targetLop.id })

@@ -80,6 +80,21 @@ const ThiManagement = () => {
 
   const handleTaoLichThi = async e => {
     e.preventDefault()
+
+    // Kiểm tra giờ thi: chỉ cho phép từ 7:00 đến trước 16:00
+    if (form.gio_thi) {
+      const [h, m] = form.gio_thi.slice(0, 5).split(':').map(Number)
+      const gioMin = h * 60 + m
+      if (gioMin < 7 * 60) {
+        toast.error('⛔ Giờ thi không được trước 7:00 sáng.')
+        return
+      }
+      if (gioMin >= 16 * 60) {
+        toast.error('⛔ Giờ thi từ 16:00 trở đi là ngoài giờ làm việc. Vui lòng chọn giờ thi từ 7:00 đến trước 16:00.')
+        return
+      }
+    }
+
     const khoa_hoc_id = getKhoaHocIdByLoaiBang(form.loai_bang)
     if (!khoa_hoc_id) {
       toast.error('Không tìm thấy khóa học cho hạng bằng này. Vui lòng tạo khóa học trước.')
@@ -154,6 +169,15 @@ const ThiManagement = () => {
           res.data.loi_phi_chua_thu.forEach(err => {
             toast.error(
               `💰 ${err.ho_ten}: Chưa đóng phí thi lại. Vui lòng vào Quản Lý Học Phí → Thu phí thi lại trước.`,
+              { autoClose: 8000 }
+            )
+          })
+        }
+        // Hiển thị lỗi lịch thi trước ngày hoàn thành tiến độ học
+        if (res.data.loi_truoc_hoan_thanh?.length > 0) {
+          res.data.loi_truoc_hoan_thanh.forEach(err => {
+            toast.error(
+              `📅 ${err.ho_ten}: Lịch thi (${err.ngay_thi}) phải sau ngày hoàn thành tiến độ học (${err.ngay_hoan_thanh}). Sớm nhất được xếp từ ${err.ngay_som_nhat_duoc_thi}.`,
               { autoClose: 8000 }
             )
           })
@@ -302,7 +326,24 @@ const ThiManagement = () => {
     const matchLoai = !filterLoai || lt.loai_thi === filterLoai
     const matchBang = !filterBang || lt.khoa_hoc?.loai_bang === filterBang
     return matchSearch && matchLoai && matchBang
+  }).sort((a, b) => {
+    // Sắp xếp: ngày thi gần hiện tại nhất lên trên, quá khứ xuống dưới theo thứ tự gần→xa
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const da = new Date(a.ngay_thi)
+    const db = new Date(b.ngay_thi)
+    const aFuture = da >= today
+    const bFuture = db >= today
+    if (aFuture && bFuture) return da - db          // cả hai tương lai: gần nhất lên trước
+    if (!aFuture && !bFuture) return db - da        // cả hai quá khứ: gần nhất lên trước
+    return aFuture ? -1 : 1                          // tương lai luôn trên quá khứ
   })
+
+  const PAGE_SIZE = 10
+  const [currentPage, setCurrentPage] = useState(1)
+  const totalPages = Math.max(1, Math.ceil(filteredThi.length / PAGE_SIZE))
+  const safePage = Math.min(currentPage, totalPages)
+  const pagedThi = filteredThi.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
   // Lọc học viên đủ điều kiện theo search
   const filteredHVDuDK = hocVienDuDK.filter(hv =>
@@ -329,9 +370,9 @@ const ThiManagement = () => {
     )
   }
 
-  const toggleSelectAll = () => {
+    const toggleSelectAll = () => {
     // Chỉ chọn/bỏ chọn các học viên ĐỦ điều kiện và không có phí chưa thu và không bị lỗi ngày
-    const eligible = filteredHVDuDK.filter(hv => !hv.co_phi_chua_thu && !hv.lich_thi_truoc_nop_ho_so && !hv.lich_sat_hanh_truoc_tn).map(hv => hv.ho_so_id)
+    const eligible = filteredHVDuDK.filter(hv => !hv.co_phi_chua_thu && !hv.lich_thi_truoc_nop_ho_so && !hv.lich_sat_hanh_truoc_tn && !hv.lich_thi_truoc_hoan_thanh).map(hv => hv.ho_so_id)
     if (selectedHVIds.length === eligible.length && eligible.length > 0) {
       setSelectedHVIds([])
     } else {
@@ -357,21 +398,21 @@ const ThiManagement = () => {
       {/* Search bar */}
       <div className="search-bar">
         <input className="search-input" placeholder="🔍 Tìm theo loại bằng, địa điểm, đơn vị tổ chức..."
-          value={search} onChange={e => setSearch(e.target.value)} />
+          value={search} onChange={e => { setSearch(e.target.value); setCurrentPage(1) }} />
         <select className="search-input" style={{ maxWidth: 180, borderColor: filterBang ? '#0d47a1' : '', fontWeight: filterBang ? 700 : 400 }}
-          value={filterBang} onChange={e => setFilterBang(e.target.value)}>
+          value={filterBang} onChange={e => { setFilterBang(e.target.value); setCurrentPage(1) }}>
           <option value="">Tất cả loại bằng</option>
           {[...new Set(khoaList.map(k => k.loai_bang).filter(Boolean))].sort().map(h => (
             <option key={h} value={h}>Hạng {h}</option>
           ))}
         </select>
-        <select className="search-input" style={{ maxWidth: 200 }} value={filterLoai} onChange={e => setFilterLoai(e.target.value)}>
+        <select className="search-input" style={{ maxWidth: 200 }} value={filterLoai} onChange={e => { setFilterLoai(e.target.value); setCurrentPage(1) }}>
           <option value="">Tất cả loại thi</option>
           <option value="tot_nghiep">🎓 Tốt nghiệp</option>
           <option value="sat_hanh">🏛️ Sát hạch (BCA)</option>
         </select>
         {(filterBang || filterLoai || search) && (
-          <button className="btn btn-outline btn-sm" onClick={() => { setFilterBang(''); setFilterLoai(''); setSearch('') }}>✕ Bỏ lọc</button>
+          <button className="btn btn-outline btn-sm" onClick={() => { setFilterBang(''); setFilterLoai(''); setSearch(''); setCurrentPage(1) }}>✕ Bỏ lọc</button>
         )}
       </div>
 
@@ -392,11 +433,13 @@ const ThiManagement = () => {
                   <tr><td colSpan={9} style={{ textAlign: 'center', padding: '40px', color: '#a0aec0' }}>
                     {search || filterLoai || filterBang ? 'Không tìm thấy kết quả phù hợp' : 'Chưa có lịch thi nào'}
                   </td></tr>
-                ) : filteredThi.map((lt, i) => {
+                ) : pagedThi.map((lt, i) => {
                   const lm = LOAI_MAP[lt.loai_thi] || { text: lt.loai_thi, cls: 'badge-gray' }
+                  const today = new Date(); today.setHours(0,0,0,0)
+                  const isPast = new Date(lt.ngay_thi) < today
                   return (
-                    <tr key={lt.id}>
-                      <td>{i + 1}</td>
+                    <tr key={lt.id} style={isPast ? {opacity: 0.75} : {}}>
+                      <td style={{color:'#9ca3af'}}>{(safePage - 1) * PAGE_SIZE + i + 1}</td>
                       <td><strong>{new Date(lt.ngay_thi).toLocaleDateString('vi-VN')}</strong></td>
                       <td>{lt.gio_thi?.slice(0, 5)}</td>
                       <td><span className={`badge ${lm.cls}`}>{lm.text}</span></td>
@@ -426,6 +469,36 @@ const ThiManagement = () => {
               </tbody>
             </table>
           </div>
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 16px',borderTop:'1px solid #e2e8f0',background:'#f9fafb'}}>
+              <span style={{fontSize:13,color:'#6b7280'}}>
+                Hiển thị {(safePage-1)*PAGE_SIZE+1}–{Math.min(safePage*PAGE_SIZE, filteredThi.length)} / {filteredThi.length} lịch thi
+              </span>
+              <div style={{display:'flex',gap:6}}>
+                <button
+                  className="btn btn-outline btn-sm"
+                  disabled={safePage === 1}
+                  onClick={() => setCurrentPage(safePage - 1)}
+                  style={{minWidth:36}}
+                >‹</button>
+                {Array.from({length: totalPages}, (_, i) => i + 1).map(p => (
+                  <button
+                    key={p}
+                    className={`btn btn-sm ${p === safePage ? 'btn-primary' : 'btn-outline'}`}
+                    onClick={() => setCurrentPage(p)}
+                    style={{minWidth:36}}
+                  >{p}</button>
+                ))}
+                <button
+                  className="btn btn-outline btn-sm"
+                  disabled={safePage === totalPages}
+                  onClick={() => setCurrentPage(safePage + 1)}
+                  style={{minWidth:36}}
+                >›</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -486,7 +559,22 @@ const ThiManagement = () => {
                   </div>
                   <div className="form-group">
                     <label>Giờ thi *</label>
-                    <input type="time" value={form.gio_thi} onChange={e => setForm({ ...form, gio_thi: e.target.value })} required />
+                    <input type="time" value={form.gio_thi} onChange={e => setForm({ ...form, gio_thi: e.target.value })} required min="07:00" max="15:59" />
+                    {form.gio_thi && (() => {
+                      const [h, m] = form.gio_thi.slice(0, 5).split(':').map(Number)
+                      const gioMin = h * 60 + m
+                      if (gioMin < 7 * 60) return (
+                        <div style={{marginTop:6,padding:'8px 12px',background:'#fee2e2',border:'1px solid #ef4444',borderRadius:6,fontSize:13,color:'#991b1b',fontWeight:500}}>
+                          ⛔ Giờ thi không được trước 7:00 sáng.
+                        </div>
+                      )
+                      if (gioMin >= 16 * 60) return (
+                        <div style={{marginTop:6,padding:'8px 12px',background:'#fee2e2',border:'1px solid #ef4444',borderRadius:6,fontSize:13,color:'#991b1b',fontWeight:500}}>
+                          ⛔ Giờ thi từ 16:00 trở đi là ngoài giờ làm việc. Vui lòng chọn giờ thi từ 7:00 đến trước 16:00.
+                        </div>
+                      )
+                      return null
+                    })()}
                   </div>
                   <div className="form-group">
                     <label>Địa điểm</label>
@@ -506,7 +594,24 @@ const ThiManagement = () => {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-outline" onClick={() => setShowModal(false)}>Hủy</button>
-                <button type="submit" className="btn btn-primary">{editingThi ? 'Cập nhật' : 'Tạo lịch thi'}</button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={(() => {
+                    if (!form.gio_thi) return false
+                    const [h, m] = form.gio_thi.slice(0, 5).split(':').map(Number)
+                    const gioMin = h * 60 + m
+                    return gioMin < 7 * 60 || gioMin >= 16 * 60
+                  })()}
+                  title={(() => {
+                    if (!form.gio_thi) return ''
+                    const [h, m] = form.gio_thi.slice(0, 5).split(':').map(Number)
+                    const gioMin = h * 60 + m
+                    if (gioMin < 7 * 60) return 'Giờ thi không được trước 7:00 sáng'
+                    if (gioMin >= 16 * 60) return 'Giờ thi từ 16:00 trở đi là ngoài giờ làm việc'
+                    return ''
+                  })()}
+                >{editingThi ? 'Cập nhật' : 'Tạo lịch thi'}</button>
               </div>
             </form>
           </div>
@@ -616,7 +721,7 @@ const ThiManagement = () => {
                               <th>
                                 <input
                                   type="checkbox"
-                                  checked={filteredHVDuDK.length > 0 && selectedHVIds.length === filteredHVDuDK.filter(hv => !hv.co_phi_chua_thu && !hv.lich_thi_truoc_nop_ho_so && !hv.lich_sat_hanh_truoc_tn).length && filteredHVDuDK.filter(hv => !hv.co_phi_chua_thu && !hv.lich_thi_truoc_nop_ho_so && !hv.lich_sat_hanh_truoc_tn).length > 0}
+                                  checked={filteredHVDuDK.length > 0 && selectedHVIds.length === filteredHVDuDK.filter(hv => !hv.co_phi_chua_thu && !hv.lich_thi_truoc_nop_ho_so && !hv.lich_sat_hanh_truoc_tn && !hv.lich_thi_truoc_hoan_thanh).length && filteredHVDuDK.filter(hv => !hv.co_phi_chua_thu && !hv.lich_thi_truoc_nop_ho_so && !hv.lich_sat_hanh_truoc_tn && !hv.lich_thi_truoc_hoan_thanh).length > 0}
                                   onChange={toggleSelectAll}
                                   title="Chọn tất cả học viên đủ điều kiện"
                                 />
@@ -636,7 +741,7 @@ const ThiManagement = () => {
                                     type="checkbox"
                                     checked={selectedHVIds.includes(hv.ho_so_id)}
                                     onChange={() => toggleSelectHV(hv.ho_so_id)}
-                                    disabled={hv.co_phi_chua_thu || hv.lich_thi_truoc_nop_ho_so || hv.lich_sat_hanh_truoc_tn}
+                                    disabled={hv.co_phi_chua_thu || hv.lich_thi_truoc_nop_ho_so || hv.lich_sat_hanh_truoc_tn || hv.lich_thi_truoc_hoan_thanh}
                                     title={
                                       hv.co_phi_chua_thu
                                         ? 'Học viên còn phí thi lại chưa đóng'
@@ -644,7 +749,9 @@ const ThiManagement = () => {
                                           ? `Lịch thi (${new Date(selectedLichForHV.ngay_thi).toLocaleDateString('vi-VN')}) trước ngày nộp hồ sơ (${hv.ngay_nop_ho_so})`
                                           : hv.lich_sat_hanh_truoc_tn
                                             ? `Lịch sát hạch (${new Date(selectedLichForHV.ngay_thi).toLocaleDateString('vi-VN')}) phải sau ngày đậu tốt nghiệp (${hv.ngay_dau_tot_nghiep})`
-                                            : ''
+                                            : hv.lich_thi_truoc_hoan_thanh
+                                              ? `Lịch thi (${new Date(selectedLichForHV.ngay_thi).toLocaleDateString('vi-VN')}) phải sau ngày hoàn thành tiến độ học (${hv.ngay_hoan_thanh_tien_do})`
+                                              : ''
                                     }
                                   />
                                 </td>
@@ -664,6 +771,11 @@ const ThiManagement = () => {
                                   {hv.lich_sat_hanh_truoc_tn && (
                                     <div style={{ fontSize: 10, color: '#dc2626', marginTop: 2, fontWeight: 600 }}>
                                       ⏰ Lịch SH phải sau ngày đậu TN ({hv.ngay_dau_tot_nghiep})
+                                    </div>
+                                  )}
+                                  {hv.lich_thi_truoc_hoan_thanh && (
+                                    <div style={{ fontSize: 10, color: '#b45309', marginTop: 2, fontWeight: 600 }}>
+                                      📅 Lịch thi phải sau ngày HT tiến độ ({hv.ngay_hoan_thanh_tien_do})
                                     </div>
                                   )}
                                 </td>

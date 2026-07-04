@@ -63,7 +63,20 @@ const TOOL_DECLARATIONS = [
   },
   {
     name: 'get_hoc_phi',
-    description: 'Lấy danh sách thanh toán học phí: trạng thái (da_dong, chua_dong, con_no), số tiền, phương thức, ngày thanh toán.',
+    description: 'Lấy danh sách thanh toán học phí với khả năng TÌM KIẾM theo tên học viên hoặc số CCCD. Dùng khi admin hỏi: "học viên X đã đóng bao nhiêu học phí", "trạng thái học phí của học viên Y", "học viên Z còn nợ học phí không", "danh sách học phí chưa đóng". Trả về: thông tin học viên (qua hoSo), loai_phi (hoc_phi hoặc phi_thi_lai), so_tien, trang_thai thanh toán, phuong_thuc (tien_mat, chuyen_khoan), ngay_thanh_toan, khóa học đăng ký.',
+    parametersJsonSchema: {
+      type: 'object',
+      properties: {
+        search: {
+          type: 'string',
+          description: 'Tìm kiếm theo tên học viên hoặc số CCCD. Dùng khi admin hỏi về học phí của học viên cụ thể.',
+        },
+        phuong_thuc: {
+          type: 'string',
+          description: 'Lọc theo phương thức thanh toán: tien_mat, chuyen_khoan',
+        },
+      },
+    },
   },
   {
     name: 'get_lich_thi',
@@ -141,7 +154,7 @@ const TOOL_DECLARATIONS = [
   },
   {
     name: 'ai_hoc_vien_theo_khoang',
-    description: 'Thống kê học viên đăng ký/hoàn thành theo khoảng thời gian TÙY CHỈNH. Trả về: tổng đăng ký, phân loại theo nguồn (online/offline), theo hạng bằng (A1/B1/B2/C...), theo trạng thái, và chi tiết theo từng ngày/tuần/tháng. QUAN TRỌNG: Hệ thống đã cung cấp ngày thực tế trong system prompt — khi admin nói "tháng này/tuần này/năm nay", hãy tự điền tu_ngay/den_ngay từ đó, KHÔNG hỏi lại admin.',
+    description: 'Thống kê CHI TIẾT số lượng HỌC VIÊN NỘP HỒ SƠ MỚI (đăng ký) trong khoảng thời gian TÙY CHỈNH. Dùng tool này khi admin hỏi: "có bao nhiêu học viên đăng ký", "bao nhiêu học viên nộp hồ sơ", "học viên mới trong tháng X", "số lượng đăng ký tuần này/tháng này/năm nay". Trả về: tong_dang_ky (tổng hồ sơ nộp mới), phân loại theo nguồn (online/offline), theo hạng bằng (A1/B1/B2/C...), theo trạng thái hồ sơ, tong_hoan_thanh (số đã nhận bằng), và chi tiết từng ngày/tuần/tháng. QUAN TRỌNG: Hệ thống đã cung cấp ngày thực tế trong system prompt — khi admin nói "tháng 7" hoặc "tháng 7 này" hãy tính tu_ngay=năm_hiện_tại-07-01 và den_ngay=năm_hiện_tại-07-31; khi nói "tháng này/tuần này/năm nay", hãy tự điền tu_ngay/den_ngay từ các mốc đã biết, KHÔNG hỏi lại admin.',
     parametersJsonSchema: {
       type: 'object',
       properties: {
@@ -254,7 +267,7 @@ const executeTool = async (toolName, toolArgs, backendUrl, token) => {
       return safe(() => axios.get(`${backendUrl}/api/admin/bao-loi-xe`, { headers: h }))
 
     case 'get_hoc_phi':
-      return safe(() => axios.get(`${backendUrl}/api/admin/hoc-phi`, { headers: h }))
+      return safe(() => axios.get(`${backendUrl}/api/admin/hoc-phi`, { headers: h, params }))
 
     case 'get_lich_thi':
       return safe(() => axios.get(`${backendUrl}/api/admin/lich-thi`, { headers: h }))
@@ -369,6 +382,17 @@ const buildSystemPrompt = (adminInfo) => {
   const ngayMai = new Date(now); ngayMai.setDate(now.getDate() + 1)
   const homQua  = new Date(now); homQua.setDate(now.getDate() - 1)
 
+  // Đầu năm / cuối năm
+  const dauNam = new Date(now.getFullYear(), 0, 1)
+  const cuoiNam = new Date(now.getFullYear(), 11, 31)
+
+  // Helper tính đầu/cuối tháng bất kỳ trong năm hiện tại
+  const dauThang = (m) => `${now.getFullYear()}-${pad(m)}-01`
+  const cuoiThangM = (m) => {
+    const lastDay = new Date(now.getFullYear(), m, 0).getDate()
+    return `${now.getFullYear()}-${pad(m)}-${pad(lastDay)}`
+  }
+
   return `Bạn là trợ lý AI của Trung Tâm Lái Xe Sao Việt. Admin: ${adminInfo?.ho_ten || 'Admin'}.
 
 ══ THỜI GIAN THỰC TẾ HIỆN TẠI ══
@@ -379,8 +403,25 @@ const buildSystemPrompt = (adminInfo) => {
 - Tuần trước: ${fmtDate(monTruoc)} → ${fmtDate(cnTruoc)}
 - Tuần tới:  ${fmtDate(monToi)} → ${fmtDate(cnToi)}
 - Tháng này: ${fmtDate(dauThangNay)} → ${fmtDate(cuoiThangNay)}
-- Tháng/Năm: ${pad(now.getMonth() + 1)}/${now.getFullYear()}
-Khi admin nói "hôm nay/hôm qua/ngày mai/tuần này/tuần trước/tuần tới/tháng này", hãy TỰ ĐỘNG dùng các ngày YYYY-MM-DD ở trên, KHÔNG hỏi lại admin.
+- Tháng/Năm hiện tại: ${pad(now.getMonth() + 1)}/${now.getFullYear()}
+- Năm hiện tại: ${now.getFullYear()}
+
+KHI ADMIN NÓI VỀ THÁNG CỤ THỂ:
+- "tháng 7" / "tháng 7 này" → tu_ngay=${dauThang(7)}, den_ngay=${cuoiThangM(7)}
+- "tháng 1" → tu_ngay=${dauThang(1)}, den_ngay=${cuoiThangM(1)}
+- "tháng 2" → tu_ngay=${dauThang(2)}, den_ngay=${cuoiThangM(2)}
+- "tháng 3" → tu_ngay=${dauThang(3)}, den_ngay=${cuoiThangM(3)}
+- "tháng 4" → tu_ngay=${dauThang(4)}, den_ngay=${cuoiThangM(4)}
+- "tháng 5" → tu_ngay=${dauThang(5)}, den_ngay=${cuoiThangM(5)}
+- "tháng 6" → tu_ngay=${dauThang(6)}, den_ngay=${cuoiThangM(6)}
+- "tháng 8" → tu_ngay=${dauThang(8)}, den_ngay=${cuoiThangM(8)}
+- "tháng 9" → tu_ngay=${dauThang(9)}, den_ngay=${cuoiThangM(9)}
+- "tháng 10" → tu_ngay=${dauThang(10)}, den_ngay=${cuoiThangM(10)}
+- "tháng 11" → tu_ngay=${dauThang(11)}, den_ngay=${cuoiThangM(11)}
+- "tháng 12" → tu_ngay=${dauThang(12)}, den_ngay=${cuoiThangM(12)}
+- "năm nay" / "từ đầu năm" → tu_ngay=${fmtDate(dauNam)}, den_ngay=${fmtDate(cuoiNam)}
+- "tháng này" → dùng ${fmtDate(dauThangNay)} → ${fmtDate(cuoiThangNay)}
+- "hôm nay/hôm qua/ngày mai/tuần này/tuần trước/tuần tới" → dùng các ngày YYYY-MM-DD ở trên, KHÔNG hỏi lại admin.
 
 NHIỆM VỤ: Hỗ trợ quản lý trung tâm lái xe và giải đáp luật/quy trình thi bằng lái Việt Nam.
 
@@ -392,7 +433,7 @@ CÁCH HOẠT ĐỘNG:
 
 TOOLS ĐẶC BIỆT CHO THỐNG KÊ LINH HOẠT:
 - ai_doanh_thu_theo_khoang: Khi admin hỏi doanh thu từ ngày X đến ngày Y, hoặc trong tháng/quý/năm bất kỳ
-- ai_hoc_vien_theo_khoang: Khi hỏi số học viên đăng ký/hoàn thành trong khoảng thời gian cụ thể
+- ai_hoc_vien_theo_khoang: Khi hỏi "có bao nhiêu học viên đăng ký", "học viên nộp hồ sơ trong tháng X/tuần X/khoảng thời gian nào đó", "thống kê học viên mới". Trả về tong_dang_ky là số hồ sơ nộp mới trong khoảng đó.
 - ai_lich_day_giang_vien: Khi hỏi lịch dạy của một GV, ngày nào GV rảnh, khoảng trống để xếp lịch
 - ai_goi_y_lich_day: Khi hỏi GV có thể dạy vào khung giờ cụ thể không, hoặc cần gợi ý khung giờ trống
 
@@ -400,6 +441,11 @@ XỬ LÝ YÊU CẦU VỀ GIẢNG VIÊN:
 - Nếu admin hỏi lịch của "GV X" → dùng get_giang_vien trước để lấy ID, rồi dùng ai_lich_day_giang_vien với tu_ngay/den_ngay đã biết ở trên
 - Nếu admin nói "tuần này" → tu_ngay=${fmtDate(monNay)}, den_ngay=${fmtDate(cnNay)} — dùng ngay, không hỏi lại
 - Nếu admin nói "tuần tới" → tu_ngay=${fmtDate(monToi)}, den_ngay=${fmtDate(cnToi)} — dùng ngay, không hỏi lại
+
+XỬ LÝ YÊU CẦU VỀ HỌC PHÍ CỦA HỌC VIÊN CỤ THỂ:
+- Khi admin hỏi "học viên [Tên] đã đóng bao nhiêu học phí", "học viên [Tên] còn nợ không" → dùng get_hoc_phi với params search=[Tên học viên]
+- Dùng đúng tên mà admin cung cấp, không tự thêm/bớt từ
+- Sau khi có dữ liệu → tổng hợp tổng số tiền đã đóng, số tiền còn nợ (nếu có), phương thức thanh toán, ngày đóng gần nhất
 - Luôn gợi ý cụ thể các khung giờ trống khi phân tích lịch dạy
 
 QUY TẮC TRẢ LỜI:
@@ -569,15 +615,15 @@ const AIAssistant = () => {
   // ── Quick prompts ─────────────────────────────────────────────
   const quickPrompts = [
     '📊 Tổng quan hệ thống hôm nay',
-    '⚠️ Báo lỗi xe chưa xử lý',
-    '👥 Học viên chờ mở lớp',
     '💰 Doanh thu tháng này',
+    '🔍 Có bao nhiêu học viên nộp hồ sơ tháng này',
+    '💳 Danh sách học phí chưa đóng',
+    '👥 Học viên chờ mở lớp',
+    '⚠️ Báo lỗi xe chưa xử lý',
     '🏫 Lớp học đang hoạt động',
     '📅 Lịch thi sắp tới',
     '🎓 Danh sách chờ cấp bằng',
-    '📈 Doanh thu 3 tháng gần nhất',
     '🗓️ Lịch dạy của giảng viên tuần tới',
-    '🔍 Số học viên đăng ký từ đầu năm',
   ]
 
   return (

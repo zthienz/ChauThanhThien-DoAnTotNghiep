@@ -45,6 +45,10 @@ const CapBangManagement = () => {
   // ── Modal cấp bằng ──
   const [showModal, setShowModal] = useState(false)
   const [selected, setSelected]   = useState(null)
+
+  // ── Modal xem thông tin học viên ──
+  const [showInfoModal, setShowInfoModal] = useState(false)
+  const [infoHV, setInfoHV]               = useState(null)
   const [form, setForm]           = useState({
     ngay_cap: new Date().toISOString().slice(0, 10),
     co_quan_cap: 'Trung Tâm Lái Xe Ngôi Sao',
@@ -80,6 +84,11 @@ const CapBangManagement = () => {
   }, [tab, search, filterTT])
 
   useEffect(() => { fetchList() }, [tab, search, filterTT, page])
+
+  const openInfoModal = (hv) => {
+    setInfoHV(hv)
+    setShowInfoModal(true)
+  }
 
   const openCapBang = (hv) => {
     setSelected(hv)
@@ -142,6 +151,21 @@ const CapBangManagement = () => {
       if (res.data.success) { toast.success(res.data.message); fetchList() }
       else toast.error(res.data.message)
     } catch (err) { toast.error(err.response?.data?.message || 'Lỗi') }
+  }
+
+  const handleXoaBang = async (hv) => {
+    const label = tab === 'tot_nghiep' ? 'bằng tốt nghiệp' : 'bằng lái xe'
+    if (!confirm(`⚠️ XÓA TOÀN BỘ DỮ LIỆU HỌC VIÊN\n\nHọc viên: ${hv.ho_ten}\nCCCD: ${hv.so_cccd}\n\nThao tác này sẽ xóa vĩnh viễn:\n• Hồ sơ đăng ký\n• ${label} đã cấp\n• Toàn bộ kết quả thi\n• Lịch sử thanh toán\n• Tài khoản đăng nhập\n\nKHÔNG THỂ HOÀN TÁC! Bạn có chắc chắn?`)) return
+    try {
+      const endpoint = tab === 'tot_nghiep'
+        ? `${backendUrl}/api/admin/cap-bang/tot-nghiep/${hv.id}/xoa`
+        : `${backendUrl}/api/admin/cap-bang/bang-lai/${hv.id}/xoa`
+      const res = await axios.delete(endpoint, { headers })
+      if (res.data.success) { 
+        toast.success(`Đã xóa ${label}`)
+        fetchList() 
+      } else toast.error(res.data.message)
+    } catch (err) { toast.error(err.response?.data?.message || 'Lỗi xóa bằng') }
   }
 
 
@@ -272,14 +296,24 @@ const CapBangManagement = () => {
                       </td>
                       <td>
                         <div className="action-cell">
+                          <button className="btn btn-info btn-sm" onClick={() => openInfoModal(hv)} title="Xem thông tin học viên">
+                            👁️ Xem
+                          </button>
                           {!daCap ? (
                             <button className="btn btn-primary btn-sm" onClick={() => openCapBang(hv)}>
                               🎓 Cấp bằng
                             </button>
                           ) : (
-                            <button className="btn btn-danger btn-sm" onClick={() => handleHuyBang(hv)}>
-                              🗑️ Thu hồi
-                            </button>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button className="btn btn-warning btn-sm" onClick={() => handleHuyBang(hv)} 
+                                title="Thu hồi bằng (khôi phục về trạng thái chờ cấp)">
+                                ↩️ Thu hồi
+                              </button>
+                              <button className="btn btn-danger btn-sm" onClick={() => handleXoaBang(hv)}
+                                title="Xóa hoàn toàn bản ghi cấp bằng">
+                                🗑️ Xóa
+                              </button>
+                            </div>
                           )}
                         </div>
                       </td>
@@ -303,6 +337,164 @@ const CapBangManagement = () => {
         )}
       </div>
 
+
+      {/* ── MODAL XEM THÔNG TIN HỌC VIÊN ── */}
+      {showInfoModal && infoHV && (
+        <div className="modal-overlay" onClick={() => setShowInfoModal(false)}>
+          <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3>👤 Thông Tin Học Viên</h3>
+                <p style={{ fontSize: 12, color: '#718096', marginTop: 3 }}>Chi tiết hồ sơ và kết quả thi</p>
+              </div>
+              <button className="modal-close" onClick={() => setShowInfoModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+
+              {/* Avatar + tên */}
+              <div className="hv-info-header">
+                <div className="hv-info-avatar">
+                  {infoHV.anh_the
+                    ? <img src={`/uploads/${infoHV.anh_the}`} alt={infoHV.ho_ten} />
+                    : <span>{infoHV.ho_ten?.charAt(0)}</span>}
+                </div>
+                <div>
+                  <div className="hv-info-name">{infoHV.ho_ten}</div>
+                  <div style={{ fontSize: 13, color: '#718096' }}>{infoHV.so_dien_thoai || '—'}</div>
+                  <div style={{ fontSize: 13, color: '#718096' }}>{infoHV.email || '—'}</div>
+                </div>
+              </div>
+
+              {/* Thông tin cơ bản */}
+              <div className="cb-section-title" style={{ marginTop: 16 }}>📋 Thông Tin Cá Nhân</div>
+              <div className="hv-info-grid">
+                <div className="hv-info-item">
+                  <span className="cb-info-label">🪪 Số CCCD</span>
+                  <span className="cb-info-value" style={{ fontFamily: 'monospace' }}>{infoHV.so_cccd || '—'}</span>
+                </div>
+                <div className="hv-info-item">
+                  <span className="cb-info-label">🎂 Ngày sinh</span>
+                  <span className="cb-info-value">{fmtDate(infoHV.ngay_sinh)}</span>
+                </div>
+              </div>
+
+              {/* Thông tin khóa học */}
+              <div className="cb-section-title" style={{ marginTop: 16 }}>🎓 Thông Tin Khóa Học</div>
+              <div className="hv-info-grid">
+                <div className="hv-info-item">
+                  <span className="cb-info-label">📚 Khóa học</span>
+                  <span className="cb-info-value">{infoHV.khoa_hoc?.ten_khoa || '—'}</span>
+                </div>
+                <div className="hv-info-item">
+                  <span className="cb-info-label">🏅 Hạng bằng</span>
+                  <span className="cb-info-value">
+                    <span className="badge badge-blue">Hạng {infoHV.khoa_hoc?.loai_bang || '—'}</span>
+                  </span>
+                </div>
+                <div className="hv-info-item">
+                  <span className="cb-info-label">📅 Ngày đăng ký</span>
+                  <span className="cb-info-value">{fmtDate(infoHV.ngay_dang_ky || infoHV.created_at)}</span>
+                </div>
+              </div>
+
+              {/* Kết quả thi */}
+              <div className="cb-section-title" style={{ marginTop: 16 }}>📊 Kết Quả Thi</div>
+              {infoHV.ket_qua_thi && infoHV.ket_qua_thi.length > 0 ? (
+                <table className="data-table" style={{ fontSize: 12 }}>
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Loại thi</th>
+                      <th>Lần thi</th>
+                      <th>Ngày thi</th>
+                      <th>Kết quả</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {infoHV.ket_qua_thi.map((kq, idx) => (
+                      <tr key={idx}>
+                        <td>{idx + 1}</td>
+                        <td>
+                          {kq.lich_thi?.loai_thi === 'tot_nghiep' ? '🎓 Tốt nghiệp'
+                            : kq.lich_thi?.loai_thi === 'sat_hanh' ? '🚗 Sát hạch'
+                            : kq.lich_thi?.loai_thi || '—'}
+                        </td>
+                        <td>{kq.lan_thi || '—'}</td>
+                        <td>{fmtDate(kq.lich_thi?.ngay_thi)}</td>
+                        <td>
+                          {kq.ket_qua === 'dat'
+                            ? <span className="badge badge-success">✅ Đạt</span>
+                            : <span className="badge badge-danger">❌ Không đạt</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '16px', color: '#a0aec0', fontSize: 13 }}>
+                  Chưa có kết quả thi
+                </div>
+              )}
+
+              {/* Thông tin bằng đã cấp */}
+              {(() => {
+                const bang = isTN ? infoHV.bang_tot_nghiep : infoHV.bang_lai_xe
+                if (!bang) return null
+                return (
+                  <>
+                    <div className="cb-section-title" style={{ marginTop: 16 }}>
+                      {isTN ? '🎓 Bằng Tốt Nghiệp Đã Cấp' : '🪪 Bằng Lái Đã Cấp'}
+                    </div>
+                    <div className="hv-info-grid" style={{ background: '#f0fdf4', borderRadius: 8, padding: '12px 16px', border: '1px solid #d1fae5' }}>
+                      <div className="hv-info-item">
+                        <span className="cb-info-label">🔖 Số bằng</span>
+                        <span className="cb-info-value" style={{ fontFamily: 'monospace', color: '#065f46' }}>
+                          {isTN ? bang.so_bang : bang.so_bang_lai}
+                        </span>
+                      </div>
+                      <div className="hv-info-item">
+                        <span className="cb-info-label">📅 Ngày cấp</span>
+                        <span className="cb-info-value">{fmtDate(bang.ngay_cap)}</span>
+                      </div>
+                      {!isTN && (
+                        <>
+                          <div className="hv-info-item">
+                            <span className="cb-info-label">🏛️ Cơ quan cấp</span>
+                            <span className="cb-info-value">{bang.co_quan_cap || '—'}</span>
+                          </div>
+                          <div className="hv-info-item">
+                            <span className="cb-info-label">⏰ Ngày hết hạn</span>
+                            <span className="cb-info-value">{bang.ngay_het_han ? fmtDate(bang.ngay_het_han) : 'Không thời hạn'}</span>
+                          </div>
+                        </>
+                      )}
+                      <div className="hv-info-item">
+                        <span className="cb-info-label">👤 Người nhận</span>
+                        <span className="cb-info-value">{bang.nguoi_nhan || '—'}</span>
+                      </div>
+                      {bang.ghi_chu && (
+                        <div className="hv-info-item" style={{ gridColumn: '1 / -1' }}>
+                          <span className="cb-info-label">📝 Ghi chú</span>
+                          <span className="cb-info-value">{bang.ghi_chu}</span>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )
+              })()}
+
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-outline" onClick={() => setShowInfoModal(false)}>Đóng</button>
+              {!(isTN ? infoHV.bang_tot_nghiep : infoHV.bang_lai_xe) && (
+                <button type="button" className="btn btn-primary" onClick={() => { setShowInfoModal(false); openCapBang(infoHV) }}>
+                  🎓 Cấp bằng
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── MODAL CẤP BẰNG ── */}
       {showModal && selected && (

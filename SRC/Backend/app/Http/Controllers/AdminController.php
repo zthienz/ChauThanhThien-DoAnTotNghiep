@@ -33,6 +33,8 @@ class AdminController extends Controller
         $chuanBiThi       = HoSoHocVien::where('trang_thai', 'chuan_bi_thi')->count();
         $dangThi          = HoSoHocVien::where('trang_thai', 'dang_thi_tn')->count();
         $dauTotNghiep     = HoSoHocVien::where('trang_thai', 'hoan_thanh_tn')->count();
+        $duDieuKienSatHanh = HoSoHocVien::where('trang_thai', 'du_dieu_kien_sat_hanh')->count();
+        $dangThiSatHanh    = HoSoHocVien::where('trang_thai', 'dang_thi_sat_hanh')->count();
 
         // Tổng học viên đang hoạt động (trừ đã đậu TN và đã cấp bằng)
         $tongDangHoatDong = HoSoHocVien::whereNotIn('trang_thai', ['hoan_thanh_tn', 'da_cap_bang'])->count();
@@ -69,6 +71,8 @@ class AdminController extends Controller
                 'chuanBiThi'       => $chuanBiThi,
                 'dangThi'          => $dangThi,
                 'dauTotNghiep'     => $dauTotNghiep,
+                'duDieuKienSatHanh' => $duDieuKienSatHanh,
+                'dangThiSatHanh'   => $dangThiSatHanh,
                 'khoaHoc'          => $tongKhoaHoc,
                 'lichHoc'          => $lichHocHomNay,
                 'doanhThu'         => (float) $doanhThu,
@@ -402,7 +406,7 @@ class AdminController extends Controller
     public function hoSoList(Request $request)
     {
         // Các trạng thái sau khi đậu sát hạch → không hiện ở trang Hồ Sơ, chỉ hiện ở trang Cấp Bằng
-        $trangThaiCapBang = ['du_dieu_kien_sat_hanh', 'dang_thi_sat_hanh', 'dau_sat_hanh', 'da_cap_bang'];
+        $trangThaiCapBang = ['dau_sat_hanh', 'da_cap_bang'];
 
         $query = HoSoHocVien::with(['khoaHoc', 'user'])
             ->when($request->trang_thai, fn($q) => $q->where('trang_thai', $request->trang_thai))
@@ -991,7 +995,10 @@ class AdminController extends Controller
         $giangVien = GiangVien::with('user')->findOrFail($id);
 
         $request->validate([
-            'so_dien_thoai'   => 'nullable|string|regex:/^0\d{9}$/',
+            'ho_ten'          => 'required|string|max:255',
+            'email'           => 'required|email|unique:users,email,' . $giangVien->user_id,
+            'password'        => 'required|string|min:8',
+            'so_dien_thoai'   => 'required|string|regex:/^0\d{9}$/',
             'chuyen_mon'      => 'required|in:ly_thuyet,thuc_hanh,ca_hai',
             'bang_cap'        => 'nullable|string|max:255',
             'nam_kinh_nghiem' => 'nullable|integer|min:0',
@@ -1000,9 +1007,14 @@ class AdminController extends Controller
         ]);
 
         // Cập nhật user
-        $giangVien->user->update([
+        $userUpdate = [
+            'ho_ten'        => $request->ho_ten,
+            'email'         => $request->email,
             'so_dien_thoai' => $request->so_dien_thoai,
-        ]);
+            'password'      => bcrypt($request->password),
+        ];
+
+        $giangVien->user->update($userUpdate);
 
         // Xử lý ảnh mới nếu có
         $anhPath = $giangVien->anh_dai_dien;
