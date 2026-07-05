@@ -189,6 +189,125 @@ const HocPhiManagement = () => {
     return acc
   }, {})
 
+  // ── Helper: render div HTML hóa đơn và xuất PDF ──
+  const renderAndExportPDF = async (htmlContent, fileName) => {
+    const div = document.createElement('div')
+    div.style.cssText = `
+      position:fixed; left:-9999px; top:0;
+      width:794px; background:#fff; padding:40px 48px;
+      font-family:'Times New Roman',serif; font-size:13px; color:#111;
+      line-height:1.6;
+    `
+    div.innerHTML = htmlContent
+    document.body.appendChild(div)
+    toast.info('Đang tạo hóa đơn...', { autoClose: 2000 })
+    try {
+      const canvas = await html2canvas(div, { scale: 2, useCORS: true, backgroundColor: '#fff' })
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const pdfW = pdf.internal.pageSize.getWidth()
+      const pdfH = (canvas.height * pdfW) / canvas.width
+      const pageH = pdf.internal.pageSize.getHeight()
+      if (pdfH <= pageH) {
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH)
+      } else {
+        let yPos = 0
+        while (yPos < pdfH) {
+          if (yPos > 0) pdf.addPage()
+          pdf.addImage(imgData, 'PNG', 0, -yPos, pdfW, pdfH)
+          yPos += pageH
+        }
+      }
+      pdf.save(fileName)
+      toast.success('Đã xuất hóa đơn PDF!')
+    } catch (err) {
+      toast.error('Xuất hóa đơn thất bại: ' + err.message)
+    } finally {
+      document.body.removeChild(div)
+    }
+  }
+
+  // ── Xuất hóa đơn 1 giao dịch (nút trong từng dòng) ──
+  const xuatHoaDonDon = async (item) => {
+    const now      = new Date().toLocaleDateString('vi-VN')
+    const isThiLai = item._loai === 'phi_thi_lai'
+    const loaiLabel = isThiLai ? 'Phí thi lại' : 'Học phí'
+    const tenKhoa  = isThiLai
+      ? (item.bai_thi?.ten_bai_thi || '—')
+      : (item.ho_so?.khoa_hoc?.ten_khoa || '—')
+    const hang     = item.ho_so?.khoa_hoc?.loai_bang || item.ho_so?.khoa_hoc?.hang_bang || '—'
+    const maGD     = item.ma_giao_dich ? `<tr><td style="padding:7px 0; color:#555; width:160px;">Mã giao dịch</td><td style="padding:7px 0; font-weight:700; font-family:monospace;">${item.ma_giao_dich}</td></tr>` : ''
+    const ghiChu   = item.ghi_chu ? `<tr><td style="padding:7px 0; color:#555;">Ghi chú</td><td style="padding:7px 0;">${item.ghi_chu}</td></tr>` : ''
+
+    const html = `
+      <div style="text-align:center; margin-bottom:24px;">
+        <div style="font-size:22px; font-weight:700; letter-spacing:1px; color:#0d47a1;">PHIẾU THU</div>
+        <div style="font-size:13px; margin-top:4px; font-weight:600;">Trung Tâm Dạy Lái Xe Sao Việt</div>
+        <div style="font-size:12px; color:#555;">495C Đường CMT8, Phường Hoà Hưng (P.13, Q.10), TP.HCM</div>
+        <div style="font-size:12px; color:#555;">☎ 0934 057 333 &nbsp;|&nbsp; ✉ daotolaixesaoviet@gmail.com</div>
+      </div>
+      <hr style="border:2px solid #0d47a1; margin-bottom:20px;">
+      <table style="width:100%; font-size:13px; margin-bottom:20px;">
+        <tr>
+          <td style="padding:7px 0; color:#555; width:160px; vertical-align:top;">Họ và tên học viên</td>
+          <td style="padding:7px 0; font-weight:700; font-size:15px;">${item.ho_so?.ho_ten || '—'}</td>
+          <td style="padding:7px 0; color:#555; width:140px; text-align:right; vertical-align:top;">Ngày xuất</td>
+          <td style="padding:7px 0; text-align:right; width:120px;">${now}</td>
+        </tr>
+        <tr>
+          <td style="padding:7px 0; color:#555;">Số CCCD</td>
+          <td style="padding:7px 0; font-family:monospace; font-size:14px;">${item.ho_so?.so_cccd || '—'}</td>
+        </tr>
+        <tr>
+          <td style="padding:7px 0; color:#555;">Khóa / Bài thi</td>
+          <td style="padding:7px 0;">${tenKhoa}</td>
+          <td style="padding:7px 0; color:#555; text-align:right;">Hạng bằng</td>
+          <td style="padding:7px 0; text-align:right; font-weight:700; color:#1d4ed8;">${hang !== '—' ? 'Hạng ' + hang : '—'}</td>
+        </tr>
+        <tr>
+          <td style="padding:7px 0; color:#555;">Loại thu</td>
+          <td style="padding:7px 0;">${loaiLabel}</td>
+        </tr>
+        <tr>
+          <td style="padding:7px 0; color:#555;">Phương thức</td>
+          <td style="padding:7px 0;">${item.phuong_thuc === 'tien_mat' ? 'Tiền mặt' : 'Chuyển khoản'}</td>
+          <td style="padding:7px 0; color:#555; text-align:right;">Người thu</td>
+          <td style="padding:7px 0; text-align:right;">${item.nguoi_thu || '—'}</td>
+        </tr>
+        <tr>
+          <td style="padding:7px 0; color:#555;">Ngày thu</td>
+          <td style="padding:7px 0;">${fmtDate(item.ngay_thanh_toan)}</td>
+        </tr>
+        ${maGD}
+        ${ghiChu}
+      </table>
+      <div style="background:#e8f5e9; border:2px solid #4caf50; border-radius:8px; padding:16px 24px; margin:20px 0; text-align:center;">
+        <div style="font-size:13px; color:#555; margin-bottom:4px;">Số tiền đã thu</div>
+        <div style="font-size:28px; font-weight:700; color:#16a34a;">${fmtMoney(item.so_tien)}</div>
+        <div style="font-size:12px; color:#16a34a; margin-top:4px;">✅ Thanh toán thành công</div>
+      </div>
+      <div style="margin-top:40px; display:flex; justify-content:space-between;">
+        <div style="text-align:center; width:200px;">
+          <div style="font-size:13px; font-weight:700;">Người nộp tiền</div>
+          <div style="font-size:11px; color:#888; margin-top:4px;">Ký, ghi rõ họ tên</div>
+          <div style="margin-top:52px; border-top:1px solid #999; padding-top:4px; font-size:12px;">${item.ho_so?.ho_ten || ''}</div>
+        </div>
+        <div style="text-align:center; width:200px;">
+          <div style="font-size:13px; font-weight:700;">Người thu tiền</div>
+          <div style="font-size:11px; color:#888; margin-top:4px;">Ký, ghi rõ họ tên</div>
+          <div style="margin-top:52px; border-top:1px solid #999; padding-top:4px; font-size:12px;">${item.nguoi_thu || 'Quản Trị Viên'}</div>
+        </div>
+      </div>
+      <div style="text-align:center; margin-top:24px; font-size:11px; color:#aaa; border-top:1px solid #eee; padding-top:8px;">
+        Trung Tâm Dạy Lái Xe Sao Việt — daotolaixesaoviet@gmail.com — 0934 057 333
+      </div>
+    `
+
+    const hoTenFile = (item.ho_so?.ho_ten || 'HocVien').replace(/\s+/g, '')
+    const ngayFile  = item.ngay_thanh_toan ? new Date(item.ngay_thanh_toan).toLocaleDateString('vi-VN').replace(/\//g, '-') : 'NoDate'
+    await renderAndExportPDF(html, `PhieuThu_${hoTenFile}_${ngayFile}.pdf`)
+  }
+
   // ── Xuất hóa đơn doanh thu PDF (html2canvas) ──
   const xuatHoaDon = async () => {
     if (filteredHP.length === 0) { toast.warning('Không có dữ liệu để xuất'); return }
@@ -202,15 +321,7 @@ const HocPhiManagement = () => {
 
     const now = new Date().toLocaleDateString('vi-VN')
 
-    // Tạo div HTML ẩn để render
-    const div = document.createElement('div')
-    div.style.cssText = `
-      position:fixed; left:-9999px; top:0;
-      width:794px; background:#fff; padding:40px 48px;
-      font-family:'Times New Roman',serif; font-size:13px; color:#111;
-      line-height:1.6;
-    `
-    div.innerHTML = `
+    const html = `
       <div style="text-align:center; margin-bottom:20px;">
         <div style="font-size:22px; font-weight:700; letter-spacing:1px; color:#0d47a1;">HÓA ĐƠN DOANH THU</div>
         <div style="font-size:13px; margin-top:4px;">Trung Tâm Dạy Lái Xe Sao Việt</div>
@@ -275,37 +386,8 @@ const HocPhiManagement = () => {
       </div>
     `
 
-    document.body.appendChild(div)
-    toast.info('Đang tạo hóa đơn...', { autoClose: 2000 })
-
-    try {
-      const canvas = await html2canvas(div, { scale: 2, useCORS: true, backgroundColor: '#fff' })
-      const imgData = canvas.toDataURL('image/png')
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-      const pdfW = pdf.internal.pageSize.getWidth()
-      const pdfH = (canvas.height * pdfW) / canvas.width
-
-      // Nếu nội dung dài hơn 1 trang thì tự chia trang
-      const pageH = pdf.internal.pageSize.getHeight()
-      if (pdfH <= pageH) {
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH)
-      } else {
-        let yPos = 0
-        while (yPos < pdfH) {
-          if (yPos > 0) pdf.addPage()
-          pdf.addImage(imgData, 'PNG', 0, -yPos, pdfW, pdfH)
-          yPos += pageH
-        }
-      }
-
-      const fileName = `HoaDon_${filterBang||'TatCa'}_${filterThang ? 'T'+filterThang : 'TatCaThang'}_${filterNam||'TatCaNam'}.pdf`
-      pdf.save(fileName)
-      toast.success('Đã xuất hóa đơn PDF!')
-    } catch (err) {
-      toast.error('Xuất hóa đơn thất bại: ' + err.message)
-    } finally {
-      document.body.removeChild(div)
-    }
+    const fileName = `HoaDon_${filterBang||'TatCa'}_${filterThang ? 'T'+filterThang : 'TatCaThang'}_${filterNam||'TatCaNam'}.pdf`
+    await renderAndExportPDF(html, fileName)
   }
 
   return (
@@ -428,6 +510,12 @@ const HocPhiManagement = () => {
                               {!isThiLai && (
                                 <button className="btn btn-info btn-sm" onClick={() => setViewItem(item)} title="Xem chi tiết">👁️</button>
                               )}
+                              <button
+                                className="btn btn-sm"
+                                style={{ background:'#0d47a1', color:'#fff' }}
+                                onClick={() => xuatHoaDonDon(item)}
+                                title="Xuất phiếu thu PDF"
+                              >🖨️</button>
                               <button className="btn btn-danger btn-sm" onClick={() => handleDelete(item)} title="Xóa giao dịch">🗑️</button>
                             </div>
                           </td>

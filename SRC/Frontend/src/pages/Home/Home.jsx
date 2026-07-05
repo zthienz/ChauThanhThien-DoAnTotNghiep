@@ -39,7 +39,7 @@ const Home = () => {
               </li>
             ))}
           </ul>
-          <Link to="/lien-he" className="btn-dangky">Đăng ký tư vấn</Link>
+          <Link to="/lien-he" className="btn-dangky">Liên hệ tư vấn</Link>
         </div>
       </section>
 

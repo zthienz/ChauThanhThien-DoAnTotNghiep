@@ -131,7 +131,7 @@ const KhoaHocChiTiet = () => {
             )}
             <div className="khct-hero-btns">
               <Link to={`/dang-ky?hang=${khoa.loai_bang}`} className="khct-btn-primary">📝 Đăng Ký Học Ngay</Link>
-              <a href="tel:0934057333" className="khct-btn-outline">📞 0934 057 333</a>
+              <Link to="/lien-he" className="khct-btn-outline">📩 Liên hệ tư vấn</Link>
             </div>
           </div>
           <div className="khct-hero-img">
@@ -227,10 +227,10 @@ const KhoaHocChiTiet = () => {
                 style={{ display: 'block', textAlign: 'center', marginBottom: 12 }}>
                 📝 Đăng Ký Học Ngay
               </Link>
-              <a href="tel:0934057333" className="khct-btn-outline"
+              <Link to="/lien-he" className="khct-btn-outline"
                 style={{ display: 'block', textAlign: 'center' }}>
-                📞 Gọi ngay: 0934 057 333
-              </a>
+                📩 Liên hệ tư vấn
+              </Link>
             </div>
           </div>
         </div>

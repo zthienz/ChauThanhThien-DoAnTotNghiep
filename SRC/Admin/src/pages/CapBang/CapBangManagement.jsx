@@ -29,6 +29,26 @@ const tongKetQua = (ketQuaList, loaiThi) => {
   return 'khong_dat'
 }
 
+// Tính ngày thi đậu gần nhất theo loại thi
+const getNgayThiDau = (ketQuaList, loaiThi) => {
+  const filtered = (ketQuaList || []).filter(kq => kq.lich_thi?.loai_thi === loaiThi)
+  if (!filtered.length) return null
+  // Nhóm theo lich_thi_id
+  const byLich = {}
+  filtered.forEach(kq => {
+    const id = kq.lich_thi_id
+    if (!byLich[id]) byLich[id] = { ngay: kq.lich_thi?.ngay_thi, items: [] }
+    byLich[id].items.push(kq)
+  })
+  // Tìm buổi thi mà tất cả kết quả đều "dat"
+  const danhSachDau = Object.values(byLich)
+    .filter(l => l.items.every(kq => kq.ket_qua === 'dat') && l.ngay)
+    .map(l => l.ngay)
+  if (!danhSachDau.length) return null
+  // Lấy ngày đậu gần nhất (nhỏ nhất trong các buổi đậu)
+  return danhSachDau.sort()[0]
+}
+
 const CapBangManagement = () => {
   const { token, backendUrl } = useAdmin()
   const [tab, setTab]         = useState('tot_nghiep')
@@ -45,6 +65,7 @@ const CapBangManagement = () => {
   // ── Modal cấp bằng ──
   const [showModal, setShowModal] = useState(false)
   const [selected, setSelected]   = useState(null)
+  const [dateWarning, setDateWarning] = useState('')
 
   // ── Modal xem thông tin học viên ──
   const [showInfoModal, setShowInfoModal] = useState(false)
@@ -102,10 +123,20 @@ const CapBangManagement = () => {
       ghi_chu:         '',
     })
     setShowModal(true)
+    setDateWarning('')
   }
 
   const handleCapBang = async e => {
     e.preventDefault()
+    // Validate ngày cấp phải sau ngày thi đậu
+    const loaiThi = tab === 'tot_nghiep' ? 'tot_nghiep' : 'sat_hanh'
+    const ngayThiDau = getNgayThiDau(selected.ket_qua_thi, loaiThi)
+    if (ngayThiDau && form.ngay_cap <= ngayThiDau) {
+      const loaiLabel = tab === 'tot_nghiep' ? 'tốt nghiệp' : 'sát hạch'
+      setDateWarning(`⚠️ Ngày cấp bằng phải sau ngày thi ${loaiLabel} (${fmtDate(ngayThiDau)}). Vui lòng chọn từ ngày ${fmtDate(new Date(new Date(ngayThiDau).getTime() + 86400000))} trở về sau.`)
+      return
+    }
+    setDateWarning('')
     try {
       const endpoint = tab === 'tot_nghiep'
         ? `${backendUrl}/api/admin/cap-bang/tot-nghiep/${selected.id}`
@@ -542,10 +573,46 @@ const CapBangManagement = () => {
                   {/* ── Thông tin bằng ── */}
                   <div className="cb-section-title" style={{ gridColumn: '1 / -1' }}>📋 Thông Tin Bằng</div>
 
-                  <div className="form-group" style={{ gridColumn: isTN ? '1 / -1' : undefined }}>
-                    <label>📅 Ngày cấp *</label>
-                    <input type="date" value={form.ngay_cap} onChange={e => setForm({ ...form, ngay_cap: e.target.value })} required />
-                  </div>
+                  {(() => {
+                    const loaiThi = isTN ? 'tot_nghiep' : 'sat_hanh'
+                    const ngayThiDau = getNgayThiDau(selected.ket_qua_thi, loaiThi)
+                    // Tính ngày tối thiểu cho phép cấp bằng = ngày sau ngày thi đậu
+                    const minDate = ngayThiDau
+                      ? new Date(new Date(ngayThiDau).getTime() + 86400000).toISOString().slice(0, 10)
+                      : null
+                    return (
+                      <div className="form-group" style={{ gridColumn: isTN ? '1 / -1' : undefined }}>
+                        <label>📅 Ngày cấp *</label>
+                        {ngayThiDau && (
+                          <div style={{ fontSize: 12, color: '#0066cc', marginBottom: 6, fontWeight: 500 }}>
+                            ℹ️ Học viên thi đậu {isTN ? 'tốt nghiệp' : 'sát hạch'} ngày <strong>{fmtDate(ngayThiDau)}</strong> — ngày cấp bằng phải từ <strong>{fmtDate(minDate)}</strong> trở về sau
+                          </div>
+                        )}
+                        <input
+                          type="date"
+                          value={form.ngay_cap}
+                          min={minDate || undefined}
+                          onChange={e => {
+                            const val = e.target.value
+                            setForm({ ...form, ngay_cap: val })
+                            if (ngayThiDau && val <= ngayThiDau) {
+                              const loaiLabel = isTN ? 'tốt nghiệp' : 'sát hạch'
+                              setDateWarning(`⚠️ Ngày cấp bằng phải sau ngày thi ${loaiLabel} (${fmtDate(ngayThiDau)}). Vui lòng chọn từ ngày ${fmtDate(minDate)} trở về sau.`)
+                            } else {
+                              setDateWarning('')
+                            }
+                          }}
+                          required
+                          style={dateWarning ? { borderColor: '#e53935' } : {}}
+                        />
+                        {dateWarning && (
+                          <div style={{ marginTop: 6, padding: '8px 12px', background: '#fff3cd', border: '1px solid #ffc107', borderRadius: 6, fontSize: 13, color: '#856404' }}>
+                            {dateWarning}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
 
                   {!isTN && (
                     <>
@@ -616,7 +683,7 @@ const CapBangManagement = () => {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-outline" onClick={() => setShowModal(false)}>Hủy</button>
-                <button type="submit" className="btn btn-primary">
+                <button type="submit" className="btn btn-primary" disabled={!!dateWarning}>
                   {isTN ? '🎓 Xác nhận cấp bằng TN' : '🪪 Xác nhận cấp bằng lái'}
                 </button>
               </div>

@@ -51,8 +51,68 @@ const DangKy = () => {
 
   const handleChange = e => {
     const { name, value } = e.target
+
+    // Ô CCCD: chỉ cho phép nhập số 0-9
+    if (name === 'so_cccd') {
+      const digitsOnly = value.replace(/\D/g, '')
+      setForm(f => ({ ...f, [name]: digitsOnly }))
+      setErrors(er => ({ ...er, [name]: '' }))
+      return
+    }
+
+    // Ô số điện thoại: chỉ cho nhập số
+    if (name === 'so_dien_thoai') {
+      const digitsOnly = value.replace(/\D/g, '')
+      setForm(f => ({ ...f, [name]: digitsOnly }))
+      // Validate realtime ngay khi nhập
+      if (digitsOnly.length > 0 && !/^0/.test(digitsOnly)) {
+        setErrors(er => ({ ...er, so_dien_thoai: 'SĐT phải bắt đầu bằng số 0' }))
+      } else if (digitsOnly.length > 0 && digitsOnly.length < 10) {
+        setErrors(er => ({ ...er, so_dien_thoai: `SĐT chưa đủ 10 số (đã nhập ${digitsOnly.length} số)` }))
+      } else if (digitsOnly.length === 10 && /^0\d{9}$/.test(digitsOnly)) {
+        setErrors(er => ({ ...er, so_dien_thoai: '' }))
+      } else {
+        setErrors(er => ({ ...er, so_dien_thoai: '' }))
+      }
+      return
+    }
+
     setForm(f => ({ ...f, [name]: value }))
     setErrors(er => ({ ...er, [name]: '' }))
+  }
+
+  // Validate realtime khi rời khỏi ô (blur)
+  const handleBlur = e => {
+    const { name, value } = e.target
+
+    if (name === 'so_dien_thoai') {
+      if (!value) return
+      if (!/^0/.test(value)) {
+        setErrors(er => ({ ...er, so_dien_thoai: 'SĐT phải bắt đầu bằng số 0' }))
+      } else if (value.length < 10) {
+        setErrors(er => ({ ...er, so_dien_thoai: `SĐT chưa đủ 10 số (đã nhập ${value.length} số)` }))
+      } else {
+        setErrors(er => ({ ...er, so_dien_thoai: '' }))
+      }
+    }
+
+    if (name === 'email') {
+      if (!value) return
+      if (!/^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(value)) {
+        setErrors(er => ({ ...er, email: 'Email không đúng định dạng (vd: abc@gmail.com)' }))
+      } else {
+        setErrors(er => ({ ...er, email: '' }))
+      }
+    }
+
+    if (name === 'so_cccd') {
+      if (!value) return
+      if (value.length < 12) {
+        setErrors(er => ({ ...er, so_cccd: `CCCD chưa đủ 12 số (đã nhập ${value.length} số)` }))
+      } else {
+        setErrors(er => ({ ...er, so_cccd: '' }))
+      }
+    }
   }
 
   const handleAnhChange = file => {
@@ -70,8 +130,8 @@ const DangKy = () => {
     if (!/^\d{12}$/.test(form.so_cccd))       errs.so_cccd = 'CCCD phải đủ 12 chữ số'
     if (!form.ngay_sinh)            errs.ngay_sinh = 'Vui lòng chọn ngày sinh'
     if (!form.khoa_hoc_id)          errs.khoa_hoc_id = 'Vui lòng chọn loại bằng lái'
-    if (form.email && !/^[a-zA-Z0-9._%+\-]+@gmail\.com$/.test(form.email))
-      errs.email = 'Email phải có định dạng @gmail.com'
+    if (form.email && !/^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(form.email))
+      errs.email = 'Email không đúng định dạng (vd: abc@gmail.com)'
 
     // Kiểm tra tuổi tối thiểu theo hạng bằng (lấy từ DB)
     if (form.ngay_sinh && form.khoa_hoc_id) {
@@ -196,7 +256,7 @@ const DangKy = () => {
                         🗑️ Xóa ảnh
                       </button>
                     )}
-                    <p className="dangky-anh-hint">Ảnh nền trắng, rõ mặt, không đội mũ</p>
+
                   </div>
 
                   {/* Thông tin cá nhân */}
@@ -211,7 +271,7 @@ const DangKy = () => {
                       <div className="form-group">
                         <label>Số điện thoại <span className="req">*</span></label>
                         <input name="so_dien_thoai" value={form.so_dien_thoai} onChange={handleChange}
-                          placeholder="0912 345 678" maxLength={10} inputMode="numeric" />
+                          onBlur={handleBlur} placeholder="0912 345 678" maxLength={10} inputMode="numeric" />
                         {errors.so_dien_thoai && <span className="field-err">{errors.so_dien_thoai}</span>}
                       </div>
                     </div>
@@ -219,7 +279,7 @@ const DangKy = () => {
                       <div className="form-group">
                         <label>Số CCCD <span className="req">*</span></label>
                         <input name="so_cccd" value={form.so_cccd} onChange={handleChange}
-                          placeholder="012345678901" maxLength={12} inputMode="numeric" />
+                          onBlur={handleBlur} placeholder="012345678901" maxLength={12} inputMode="numeric" />
                         {errors.so_cccd && <span className="field-err">{errors.so_cccd}</span>}
                       </div>
                       <div className="form-group">
@@ -244,8 +304,8 @@ const DangKy = () => {
                     <div className="form-row">
                       <div className="form-group">
                         <label>Email</label>
-                        <input name="email" type="email" value={form.email} onChange={handleChange}
-                          placeholder="email@gmail.com" />
+                        <input name="email" type="text" value={form.email} onChange={handleChange}
+                          onBlur={handleBlur} placeholder="email@gmail.com" />
                         {errors.email && <span className="field-err">{errors.email}</span>}
                       </div>
                       <div className="form-group">

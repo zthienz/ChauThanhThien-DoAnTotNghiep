@@ -20,6 +20,9 @@ use Carbon\Carbon;
 class AdminController extends Controller
 {
     // ─── Dashboard ───────────────────────────────────────────────────────────
+    // Trả về dữ liệu tổng quan cho trang Dashboard của Admin:
+    // tổng hồ sơ, số học viên theo từng trạng thái, số khóa học, lịch học hôm nay,
+    // doanh thu tháng này và dữ liệu biểu đồ doanh thu 7 ngày gần nhất.
     public function dashboard()
     {
         $tongHoSo      = HoSoHocVien::count();
@@ -82,6 +85,9 @@ class AdminController extends Controller
     }
 
     // ─── Chart doanh thu theo kỳ ─────────────────────────────────────────────
+    // Trả về dữ liệu biểu đồ doanh thu theo kỳ được chọn:
+    // 'thang_nay' (từng ngày trong tháng), 'thang' (12 tháng gần nhất),
+    // 'quy' (8 quý gần nhất), 'nam' (5 năm gần nhất).
     public function chartDoanhThu(Request $request)
     {
         $ky = $request->ky ?? 'thang_nay'; // thang_nay | thang | quy | nam
@@ -148,6 +154,8 @@ class AdminController extends Controller
     }
 
     // ─── Chart học viên đăng ký mới vs hoàn thành (6 tháng) ─────────────────
+    // Trả về dữ liệu biểu đồ so sánh số học viên đăng ký mới và hoàn thành
+    // trong 6 tháng gần nhất, dùng cho biểu đồ Dashboard.
     public function chartHocVien()
     {
         $data = [];
@@ -175,6 +183,9 @@ class AdminController extends Controller
     }
 
     // ─── Hoạt động gần đây ───────────────────────────────────────────────────
+    // Lấy 15 hoạt động gần đây nhất từ nhiều nguồn: hồ sơ mới đăng ký online,
+    // hồ sơ tạo offline, thanh toán học phí, báo lỗi xe, và học viên vắng mặt.
+    // Kết quả được sắp xếp theo thời gian mới nhất.
     public function hoatDongGanDay()
     {
         $activities = collect();
@@ -285,6 +296,8 @@ class AdminController extends Controller
     }
 
     // ─── Thu phí thi lại cho học viên ──────────────────────────────────────
+    // Ghi nhận thanh toán phí thi lại cho từng bài thi học viên bị rớt.
+    // Chỉ thu những bài chưa đóng phí; cập nhật cờ da_thu_phi trong kết quả thi.
     public function thuPhiThiLai(Request $request, $hoSoId)
     {
         $request->validate([
@@ -364,6 +377,7 @@ class AdminController extends Controller
     }
 
     // ─── Lấy danh sách phí thi lại chưa thu của 1 học viên ──────────────────
+    // Trả về danh sách các bài thi học viên bị rớt/vắng mà chưa đóng phí thi lại.
     public function phiThiLaiChuaThu(Request $request, $hoSoId)
     {
         // Lấy tất cả bài thi rớt, chưa thu phí
@@ -388,6 +402,7 @@ class AdminController extends Controller
     }
 
     // ─── Danh sách tất cả phí thi lại (admin xem) ────────────────────────────
+    // Trả về toàn bộ giao dịch phí thi lại, có thể lọc theo học viên hoặc tìm kiếm.
     public function danhSachPhiThiLai(Request $request)
     {
         $query = \App\Models\ThanhToanHocPhi::with(['hoSo.khoaHoc', 'baiThi', 'lichThi'])
@@ -403,6 +418,11 @@ class AdminController extends Controller
             'data'    => $query->latest()->get(),
         ]);
     }
+    // ─── Danh sách hồ sơ học viên ────────────────────────────────────────────
+    // Trả về danh sách hồ sơ học viên có phân trang, hỗ trợ lọc theo trạng thái,
+    // tìm kiếm theo tên/CCCD/SĐT, loại bằng, trạng thái học phí.
+    // Ẩn các hồ sơ đã cấp bằng/đậu sát hạch (những trường hợp đó thuộc trang Cấp Bằng).
+    // Đồng thời đánh dấu những học viên có phí thi lại chưa thu.
     public function hoSoList(Request $request)
     {
         // Các trạng thái sau khi đậu sát hạch → không hiện ở trang Hồ Sơ, chỉ hiện ở trang Cấp Bằng
@@ -449,6 +469,8 @@ class AdminController extends Controller
     }
 
     // ─── Chi tiết hồ sơ ──────────────────────────────────────────────────────
+    // Trả về đầy đủ thông tin của 1 hồ sơ học viên bao gồm: khóa học, tài khoản,
+    // lịch sử thanh toán, thông tin lớp học, giảng viên và kết quả thi.
     public function hoSoDetail($id)
     {
         $hoSo = HoSoHocVien::with([
@@ -466,6 +488,9 @@ class AdminController extends Controller
     }
 
     // ─── Admin nhập hồ sơ offline ────────────────────────────────────────────
+    // Admin tự tạo hồ sơ học viên tại trung tâm (đăng ký trực tiếp).
+    // Kiểm tra trùng CCCD, kiểm tra tuổi tối thiểu theo hạng bằng,
+    // xử lý upload ảnh thẻ và lưu hồ sơ với trạng thái 'cho_dong_hoc_phi'.
     public function taoHoSoOffline(Request $request)
     {
         $request->validate([
@@ -544,6 +569,7 @@ class AdminController extends Controller
     }
 
     // ─── Upload ảnh thẻ riêng lẻ ─────────────────────────────────────────────
+    // Cho phép admin upload hoặc thay thế ảnh thẻ của học viên sau khi tạo hồ sơ.
     public function uploadAnhThe(Request $request, $hoSoId)
     {
         $request->validate([
@@ -568,6 +594,8 @@ class AdminController extends Controller
     }
 
     // ─── Ghi nhận đóng học phí ───────────────────────────────────────────────
+    // Admin xác nhận học viên đã đóng học phí, tạo bản ghi thanh toán,
+    // cập nhật trạng thái hồ sơ từ 'cho_dong_hoc_phi' sang 'cho_mo_lop'.
     public function ghiNhanHocPhi(Request $request, $hoSoId)
     {
         $request->validate([
@@ -694,6 +722,9 @@ class AdminController extends Controller
     }
 
     // ─── Xếp học viên vào lớp + tạo tài khoản ───────────────────────────────
+    // Xếp học viên vào lớp học được chọn và tự động tạo tài khoản đăng nhập
+    // (nếu chưa có). Kiểm tra sĩ số, học phí, và cập nhật trạng thái hồ sơ
+    // sang 'chuan_bi_hoc' hoặc 'dang_hoc' tùy theo ngày khai giảng.
     public function xepLopVaTaoTaiKhoan(Request $request, $hoSoId)
     {
         $request->validate([
@@ -795,6 +826,7 @@ class AdminController extends Controller
     }
 
     // ─── Cập nhật trạng thái hồ sơ ───────────────────────────────────────────
+    // Admin thay đổi thủ công trạng thái hồ sơ học viên sang một trạng thái hợp lệ bất kỳ.
     public function capNhatTrangThai(Request $request, $hoSoId)
     {
         $request->validate([
@@ -808,6 +840,8 @@ class AdminController extends Controller
     }
 
     // ─── Cập nhật thông tin hồ sơ ────────────────────────────────────────────
+    // Admin chỉnh sửa thông tin hồ sơ học viên. Nếu CCCD hoặc ngày sinh thay đổi
+    // thì tự động đồng bộ lại tài khoản đăng nhập (email và mật khẩu) của học viên.
     public function capNhatHoSo(Request $request, $hoSoId)
     {
         $hoSo = HoSoHocVien::findOrFail($hoSoId);
