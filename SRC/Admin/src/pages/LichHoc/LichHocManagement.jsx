@@ -347,8 +347,7 @@ const LichHocManagement = () => {
                     <th>Loại</th>
                     <th>Địa điểm</th>
                     <th>Xe</th>
-                    <th>Thao tác</th>
-                  </tr>
+                    <th style={{ textAlign: 'center' }}>Thao tác</th>                  </tr>
                 </thead>
                 <tbody>
                   {groups.map(({ date, key, items }) => {
@@ -408,9 +407,9 @@ const LichHocManagement = () => {
                               )
                             ) : (lh.xe?.bien_so || '—')}
                           </td>
-                          <td>
+                          <td style={{ textAlign: 'center' }}>
                             <div className="action-cell">
-                              <button className="btn btn-success btn-sm" onClick={() => openDiemDanh(lh)} title="Điểm danh">✅</button>
+                              <button className="btn btn-success btn-sm" onClick={() => openDiemDanh(lh)} title="Điểm danh">✅ Điểm danh</button>
                               <button className="btn btn-outline btn-sm" onClick={() => openEdit(lh)} title="Sửa">✏️</button>
                               <button className="btn btn-danger btn-sm" onClick={() => handleDelete(lh.id)} title="Xóa">🗑️</button>
                             </div>
@@ -494,7 +493,7 @@ const LichHocManagement = () => {
                           </p>
                         )}
                         <div className="tt-ev-actions" onClick={e => e.stopPropagation()}>
-                          <button className="tt-ev-btn" onClick={() => openDiemDanh(lh)} title="Điểm danh">✅</button>
+                          <button className="tt-ev-btn" onClick={() => openDiemDanh(lh)} title="Điểm danh">✅ Điểm danh</button>
                           <button className="tt-ev-btn" onClick={() => openEdit(lh)} title="Sửa">✏️</button>
                           <button className="tt-ev-btn tt-ev-del" onClick={() => handleDelete(lh.id)} title="Xóa">🗑️</button>
                         </div>

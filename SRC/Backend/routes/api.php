@@ -69,6 +69,7 @@ Route::middleware(['auth.jwt', 'role:admin|giang_vien'])->prefix('admin')->group
     Route::get('/hoat-dong-gan-day',        [AdminController::class, 'hoatDongGanDay']);
     Route::get('/chart-doanh-thu',          [AdminController::class, 'chartDoanhThu']);
     Route::get('/chart-hoc-vien',           [AdminController::class, 'chartHocVien']);
+    Route::get('/chart-hang-bang',          [AdminController::class, 'chartHangBang']);
 
     // ── Hồ sơ học viên ──────────────────────────────────────────────────────
     Route::get('/ho-so',                    [AdminController::class, 'hoSoList']);

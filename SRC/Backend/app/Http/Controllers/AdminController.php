@@ -182,6 +182,71 @@ class AdminController extends Controller
         return response()->json(['success' => true, 'data' => $data]);
     }
 
+    // ─── Chart thống kê theo hạng bằng (có lọc theo kỳ) ─────────────────────
+    // Trả về số học viên đăng ký, số xe, số lớp học theo từng hạng bằng.
+    // Hỗ trợ lọc theo kỳ: thang (tháng này), quy (quý này), 6thang, nam, tat_ca.
+    public function chartHangBang(Request $request)
+    {
+        $ky = $request->ky ?? 'tat_ca';
+
+        // Xác định khoảng thời gian lọc hồ sơ & lớp học
+        $tuNgay = null;
+        switch ($ky) {
+            case 'thang':  $tuNgay = now()->startOfMonth(); break;
+            case 'quy':    $tuNgay = now()->startOfQuarter(); break;
+            case '6thang': $tuNgay = now()->subMonths(6)->startOfDay(); break;
+            case 'nam':    $tuNgay = now()->startOfYear(); break;
+            default:       $tuNgay = null; // tat_ca
+        }
+
+        $hangBangColors = [
+            'A'  => '#f59e0b', 'A1' => '#f97316', 'A2' => '#fb923c',
+            'B1' => '#3b82f6', 'B2' => '#8b5cf6',
+            'C'  => '#10b981', 'C1' => '#0d9488', 'C2' => '#059669',
+            'CE' => '#06b6d4', 'D'  => '#6366f1',  'E'  => '#ec4899',
+        ];
+
+        // Học viên đăng ký theo hạng — lọc theo created_at của hồ sơ
+        $hvQuery = DB::table('ho_so_hoc_vien')
+            ->join('khoa_hoc', 'khoa_hoc.id', '=', 'ho_so_hoc_vien.khoa_hoc_id')
+            ->selectRaw('khoa_hoc.loai_bang as hang_bang, COUNT(*) as tong');
+        if ($tuNgay) $hvQuery->where('ho_so_hoc_vien.created_at', '>=', $tuNgay);
+        $hvTheoHangBang = $hvQuery->groupBy('khoa_hoc.loai_bang')->pluck('tong', 'hang_bang')->toArray();
+
+        // Xe theo hạng — xe không thay đổi theo kỳ, luôn lấy tất cả
+        $xeTheoHangBang = DB::table('xe')
+            ->whereNotNull('hang_bang')
+            ->selectRaw('hang_bang, COUNT(*) as tong')
+            ->groupBy('hang_bang')
+            ->pluck('tong', 'hang_bang')
+            ->toArray();
+
+        // Lớp học theo hạng — lọc theo created_at của lớp
+        $lopQuery = DB::table('lop_hoc')
+            ->join('khoa_hoc', 'khoa_hoc.id', '=', 'lop_hoc.khoa_hoc_id')
+            ->selectRaw('khoa_hoc.loai_bang as hang_bang, COUNT(*) as tong');
+        if ($tuNgay) $lopQuery->where('lop_hoc.created_at', '>=', $tuNgay);
+        $lopTheoHangBang = $lopQuery->groupBy('khoa_hoc.loai_bang')->pluck('tong', 'hang_bang')->toArray();
+
+        // Gộp tất cả hạng bằng
+        $tatCaHangBang = array_unique(array_merge(
+            array_keys($hvTheoHangBang),
+            array_keys($xeTheoHangBang),
+            array_keys($lopTheoHangBang)
+        ));
+        sort($tatCaHangBang);
+
+        $result = array_map(fn($hb) => [
+            'hang_bang' => $hb,
+            'hoc_vien'  => (int)($hvTheoHangBang[$hb]  ?? 0),
+            'xe'        => (int)($xeTheoHangBang[$hb]   ?? 0),
+            'lop_hoc'   => (int)($lopTheoHangBang[$hb]  ?? 0),
+            'color'     => $hangBangColors[$hb] ?? '#64748b',
+        ], $tatCaHangBang);
+
+        return response()->json(['success' => true, 'data' => array_values($result)]);
+    }
+
     // ─── Hoạt động gần đây ───────────────────────────────────────────────────
     // Lấy 15 hoạt động gần đây nhất từ nhiều nguồn: hồ sơ mới đăng ký online,
     // hồ sơ tạo offline, thanh toán học phí, báo lỗi xe, và học viên vắng mặt.
@@ -1264,6 +1329,51 @@ class AdminController extends Controller
         $tongGV     = array_sum(array_column($gvData, 'tong'));
         $gvActive   = array_sum(array_column($gvData, 'active'));
 
+        // ── 3b. Học viên theo hạng bằng ──────────────────────────────────
+        $hvTheoHangBang = DB::table('ho_so_hoc_vien')
+            ->join('khoa_hoc', 'khoa_hoc.id', '=', 'ho_so_hoc_vien.khoa_hoc_id')
+            ->selectRaw('khoa_hoc.loai_bang as hang_bang, COUNT(*) as tong')
+            ->groupBy('khoa_hoc.loai_bang')
+            ->orderBy('hang_bang')
+            ->pluck('tong', 'hang_bang')
+            ->toArray();
+
+        // ── 3c. Xe theo hạng bằng (số lượng xe phục vụ mỗi hạng) ────────
+        $xeTheoHangBang = DB::table('xe')
+            ->whereNotNull('hang_bang')
+            ->selectRaw('hang_bang, COUNT(*) as tong')
+            ->groupBy('hang_bang')
+            ->orderBy('hang_bang')
+            ->pluck('tong', 'hang_bang')
+            ->toArray();
+
+        // ── 3d. Lớp học theo hạng bằng ───────────────────────────────────
+        $lopTheoHangBang = DB::table('lop_hoc')
+            ->join('khoa_hoc', 'khoa_hoc.id', '=', 'lop_hoc.khoa_hoc_id')
+            ->selectRaw('khoa_hoc.loai_bang as hang_bang, COUNT(*) as tong')
+            ->groupBy('khoa_hoc.loai_bang')
+            ->orderBy('hang_bang')
+            ->pluck('tong', 'hang_bang')
+            ->toArray();
+
+        // Gộp tất cả hạng bằng xuất hiện từ 3 nguồn
+        $tatCaHangBang = array_unique(array_merge(
+            array_keys($hvTheoHangBang),
+            array_keys($xeTheoHangBang),
+            array_keys($lopTheoHangBang)
+        ));
+        sort($tatCaHangBang);
+
+        $hangBangColors = ['A1'=>'#f59e0b','A2'=>'#f97316','B1'=>'#3b82f6','B2'=>'#8b5cf6','C'=>'#10b981','D'=>'#06b6d4','E'=>'#ef4444','F'=>'#ec4899'];
+
+        $thongKeHangBang = array_map(fn($hb) => [
+            'hang_bang'  => $hb,
+            'hoc_vien'   => $hvTheoHangBang[$hb]   ?? 0,
+            'xe'         => $xeTheoHangBang[$hb]    ?? 0,
+            'lop_hoc'    => $lopTheoHangBang[$hb]   ?? 0,
+            'color'      => $hangBangColors[$hb]     ?? '#64748b',
+        ], $tatCaHangBang);
+
         // ── 4. Lịch thi sắp tới (30 ngày tới) ───────────────────────────
         $lichThiSapToi = DB::table('lich_thi')
             ->join('khoa_hoc', 'khoa_hoc.id', '=', 'lich_thi.khoa_hoc_id')
@@ -1331,13 +1441,14 @@ class AdminController extends Controller
         }
 
         return response()->json([
-            'success'       => true,
-            'lop_hoc'       => $lopData,
-            'khoa_hoc'      => $khoaData,
-            'xe'            => ['data' => $xeData, 'tong' => $tongXe, 'san_sang' => $xeSanSang],
-            'giang_vien'    => ['data' => $gvData, 'tong' => $tongGV, 'active' => $gvActive],
-            'lich_thi'      => $lichThiSapToi,
-            'ket_qua_thi'   => $ketQuaThiData,
+            'success'           => true,
+            'lop_hoc'           => $lopData,
+            'khoa_hoc'          => $khoaData,
+            'xe'                => ['data' => $xeData, 'tong' => $tongXe, 'san_sang' => $xeSanSang],
+            'giang_vien'        => ['data' => $gvData, 'tong' => $tongGV, 'active' => $gvActive],
+            'lich_thi'          => $lichThiSapToi,
+            'ket_qua_thi'       => $ketQuaThiData,
+            'thong_ke_hang_bang'=> $thongKeHangBang,
         ]);
     }
 

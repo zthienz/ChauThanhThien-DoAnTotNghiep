@@ -1,0 +1,38 @@
+.section-cp {
+  padding: 60px 0;
+  background: #fff;
+}
+
+.cp-license-title {
+  text-align: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: #e53935;
+  margin-bottom: 28px;
+}
+
+.cp-license-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.cp-license-card {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.cp-license-card img {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+
+@media (max-width: 768px) {
+  .cp-license-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -30,19 +30,6 @@ const SectionGioiThieu = () => (
       </div>
     </div>
 
-    {/* Giấy phép */}
-    <div className="container">
-      <h3 className="gt-license-title">
-        Được Cấp Phép Đào Tạo Chính Quy, Cam Kết Uy Tín &amp; Minh Bạch
-      </h3>
-      <div className="gt-license-grid">
-        {['/chungnhan1.jpg', '/chungnhan2.jpg', '/chungnhan3.jpg'].map((src, i) => (
-          <div key={i} className="gt-license-card">
-            <img src={src} alt={`Giấy phép ${i + 1}`} />
-          </div>
-        ))}
-      </div>
-    </div>
   </section>
 )
 

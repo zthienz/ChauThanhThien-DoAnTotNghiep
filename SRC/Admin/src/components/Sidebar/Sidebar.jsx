@@ -4,19 +4,19 @@ import './Sidebar.css'
 
 // Menu cho ADMIN
 const adminMenu = [
-  { path: '/',           icon: '📊', label: 'Dashboard',          end: true },
-  { path: '/ho-so',      icon: '📋', label: 'Hồ Sơ Học Viên' },
-  { path: '/bang-lai',   icon: '🪪', label: 'Bằng Lái' },
-  { path: '/khoa-hoc',   icon: '📅', label: 'Khóa Học' },
-  { path: '/lop-hoc',    icon: '🏫', label: 'Lớp Học' },
-  { path: '/lich-hoc',   icon: '🗓️', label: 'Lịch Học' },
-  { path: '/thi',        icon: '🏆', label: 'Lịch Thi & Kết Quả' },
-  { path: '/bai-thi',    icon: '📋', label: 'Bài Thi' },
-  { path: '/cap-bang',   icon: '🎓', label: 'Cấp Bằng' },
-  { path: '/giang-vien', icon: '👨‍🏫', label: 'Giảng Viên' },
-  { path: '/hoc-phi',    icon: '💰', label: 'Học Phí' },
+  { path: '/',           icon: '📊', label: 'Dashboard',                    end: true },
+  { path: '/ho-so',      icon: '📋', label: 'Quản Lý Hồ Sơ Học Viên' },
+  { path: '/bang-lai',   icon: '🪪', label: 'Quản Lý Hạng Bằng' },
+  { path: '/khoa-hoc',   icon: '📅', label: 'Quản Lý Khóa Học' },
+  { path: '/lop-hoc',    icon: '🏫', label: 'Quản Lý Lớp Học' },
+  { path: '/lich-hoc',   icon: '🗓️', label: 'Quản Lý Lịch Học' },
+  { path: '/thi',        icon: '🏆', label: 'Quản Lý Lịch Thi' },
+  { path: '/bai-thi',    icon: '📋', label: 'Quản Lý Bài Thi' },
+  { path: '/cap-bang',   icon: '🎓', label: 'Quản Lý Cấp Bằng' },
+  { path: '/giang-vien', icon: '👨‍🏫', label: 'Quản Lý Giảng Viên' },
+  { path: '/hoc-phi',    icon: '💰', label: 'Quản Lý Học Phí' },
   { path: '/xe',         icon: '🚗', label: 'Quản Lý Xe' },
-  { path: '/lien-he',   icon: '✉️', label: 'Liên Hệ' },
+  { path: '/lien-he',    icon: '✉️', label: 'Quản Lý Liên Hệ' },
 ]
 
 // Menu cho GIẢNG VIÊN — động theo chuyen_mon

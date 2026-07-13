@@ -24,6 +24,9 @@ const AdminDashboard = () => {
   const [kqKy, setKqKy]                 = useState('tuan')
   const [kqData, setKqData]             = useState([])
   const [kqLoading, setKqLoading]       = useState(false)
+  const [hangBangKy, setHangBangKy]     = useState('tat_ca')
+  const [hangBangStats, setHangBangStats] = useState([])
+  const [hangBangLoading, setHangBangLoading] = useState(false)
 
   const headers = { Authorization: `Bearer ${token}` }
 
@@ -54,6 +57,15 @@ const AdminDashboard = () => {
       .finally(() => setKqLoading(false))
   }, [kqKy, token])
 
+  // Fetch thống kê hạng bằng khi đổi kỳ
+  useEffect(() => {
+    setHangBangLoading(true)
+    axios.get(`${backendUrl}/api/admin/chart-hang-bang`, { headers, params: { ky: hangBangKy } })
+      .then(res => { if (res.data.success) setHangBangStats(res.data.data) })
+      .catch(() => {})
+      .finally(() => setHangBangLoading(false))
+  }, [hangBangKy, token])
+
   useEffect(() => {
     setChartLoading(true)
     axios.get(`${backendUrl}/api/admin/chart-doanh-thu`, { headers, params: { ky: chartKy } })
@@ -81,12 +93,12 @@ const AdminDashboard = () => {
   // Dữ liệu đã đủ — không cần biến phụ nào thêm
 
   // Extra data
-  const lopData     = extra?.lop_hoc   || []
-  const khoaData    = extra?.khoa_hoc   || []
-  const xeInfo      = extra?.xe        || { data: [], tong: 0, san_sang: 0 }
-  const xeData      = xeInfo.data      || []   // hiển thị đủ 4 trạng thái kể cả = 0
-  const gvInfo      = extra?.giang_vien|| { data: [], tong: 0, active: 0 }
-  const lichThiList = extra?.lich_thi  || []
+  const lopData          = extra?.lop_hoc          || []
+  const khoaData         = extra?.khoa_hoc          || []
+  const xeInfo           = extra?.xe                || { data: [], tong: 0, san_sang: 0 }
+  const xeData           = xeInfo.data              || []
+  const gvInfo           = extra?.giang_vien        || { data: [], tong: 0, active: 0 }
+  const lichThiList      = extra?.lich_thi          || []
 
   const KY_MAP = { tuan: '7 Ngày Gần Nhất', thang: '30 Ngày (4 Tuần)', nam: '12 Tháng' }
 
@@ -464,6 +476,140 @@ const AdminDashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* ── Hàng 5: Thống kê theo hạng bằng ── */}
+      {hangBangStats.length > 0 && (
+        <div className="card">
+          {/* Header */}
+          <div className="card-header" style={{ flexWrap:'wrap', gap:10 }}>
+            <div>
+              <h3 style={{ margin:0 }}>🪪 Thống Kê Theo Hạng Bằng</h3>
+              <p style={{ margin:'2px 0 0', fontSize:12, color:'#718096' }}>Học viên đăng ký · Xe thực hành · Lớp học</p>
+            </div>
+            <div style={{ display:'flex', gap:8, alignItems:'center', marginLeft:'auto' }}>
+              {[
+                { value:'thang',   label:'Tháng này' },
+                { value:'quy',     label:'Quý này' },
+                { value:'6thang',  label:'6 Tháng' },
+                { value:'nam',     label:'Năm nay' },
+                { value:'tat_ca',  label:'Tất cả' },
+              ].map(opt => (
+                <button key={opt.value}
+                  onClick={() => setHangBangKy(opt.value)}
+                  style={{
+                    padding:'5px 13px', borderRadius:20, fontSize:12, fontWeight:600, cursor:'pointer', border:'none',
+                    background: hangBangKy === opt.value ? '#0d47a1' : '#f1f5f9',
+                    color:      hangBangKy === opt.value ? '#fff'     : '#374151',
+                    transition: 'all .15s',
+                  }}
+                >{opt.label}</button>
+              ))}
+            </div>
+          </div>
+
+          <div className="card-body" style={{ padding:'8px 20px 20px' }}>
+            {hangBangLoading ? (
+              <div style={{ display:'flex', justifyContent:'center', padding:40 }}><div className="spinner" /></div>
+            ) : hangBangStats.length === 0 ? (
+              <div className="empty-state"><span>📊</span><p>Chưa có dữ liệu trong kỳ này</p></div>
+            ) : (
+              <>
+                {/* ── KPI tổng ── */}
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:20 }}>
+                  {[
+                    { icon:'👥', label:'Tổng học viên', value: hangBangStats.reduce((s,d)=>s+d.hoc_vien,0), color:'#3b82f6', bg:'#eff6ff' },
+                    { icon:'🚗', label:'Tổng xe',        value: hangBangStats.reduce((s,d)=>s+d.xe,0),       color:'#10b981', bg:'#f0fdf4' },
+                    { icon:'🏫', label:'Tổng lớp học',   value: hangBangStats.reduce((s,d)=>s+d.lop_hoc,0), color:'#8b5cf6', bg:'#f5f3ff' },
+                  ].map((k,i) => (
+                    <div key={i} style={{ background:k.bg, borderRadius:12, padding:'14px 18px', display:'flex', alignItems:'center', gap:12 }}>
+                      <span style={{ fontSize:26 }}>{k.icon}</span>
+                      <div>
+                        <div style={{ fontSize:26, fontWeight:800, color:k.color, lineHeight:1 }}>{k.value}</div>
+                        <div style={{ fontSize:12, color:'#718096', marginTop:2 }}>{k.label}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── Grouped Bar Chart ── */}
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={hangBangStats} barGap={4} barCategoryGap="25%">
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                    <XAxis
+                      dataKey="hang_bang"
+                      tick={{ fontSize:13, fontWeight:700, fill:'#4a5568' }}
+                      axisLine={false} tickLine={false}
+                    />
+                    <YAxis tick={{ fontSize:12, fill:'#9ca3af' }} allowDecimals={false} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      contentStyle={{ borderRadius:10, border:'none', boxShadow:'0 4px 16px rgba(0,0,0,.12)', fontSize:13 }}
+                      cursor={{ fill:'rgba(0,0,0,0.03)' }}
+                    />
+                    <Legend iconType="circle" iconSize={9} wrapperStyle={{ fontSize:13, paddingTop:12 }} />
+                    <Bar dataKey="hoc_vien" name="Học viên"  fill="#3b82f6" radius={[5,5,0,0]} maxBarSize={36} />
+                    <Bar dataKey="xe"       name="Xe"        fill="#10b981" radius={[5,5,0,0]} maxBarSize={36} />
+                    <Bar dataKey="lop_hoc"  name="Lớp học"   fill="#8b5cf6" radius={[5,5,0,0]} maxBarSize={36} />
+                  </BarChart>
+                </ResponsiveContainer>
+
+                {/* ── Bảng chi tiết ── */}
+                <div style={{ marginTop:20, borderRadius:12, overflow:'hidden', border:'1px solid #e2e8f0' }}>
+                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+                    <thead>
+                      <tr style={{ background:'#f8fafc' }}>
+                        <th style={{ padding:'10px 16px', textAlign:'left', fontWeight:700, color:'#374151', borderBottom:'1px solid #e2e8f0' }}>Hạng bằng</th>
+                        <th style={{ padding:'10px 16px', textAlign:'center', fontWeight:700, color:'#3b82f6',  borderBottom:'1px solid #e2e8f0' }}>👥 Học viên</th>
+                        <th style={{ padding:'10px 16px', textAlign:'center', fontWeight:700, color:'#10b981', borderBottom:'1px solid #e2e8f0' }}>🚗 Xe</th>
+                        <th style={{ padding:'10px 16px', textAlign:'center', fontWeight:700, color:'#8b5cf6', borderBottom:'1px solid #e2e8f0' }}>🏫 Lớp học</th>
+                        <th style={{ padding:'10px 16px', textAlign:'center', fontWeight:700, color:'#6b7280', borderBottom:'1px solid #e2e8f0' }}>Tỷ lệ HV</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        const tongHV = hangBangStats.reduce((s,d)=>s+d.hoc_vien,0) || 1
+                        return hangBangStats.map((d, i) => (
+                          <tr key={i} style={{ background: i%2===0?'#fff':'#fafafa', transition:'background .15s' }}>
+                            <td style={{ padding:'10px 16px', borderBottom:'1px solid #f1f5f9' }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                                <div style={{ width:10, height:10, borderRadius:3, background:d.color, flexShrink:0 }}/>
+                                <span style={{ fontWeight:700, color:'#1a202c' }}>Hạng {d.hang_bang}</span>
+                              </div>
+                            </td>
+                            <td style={{ padding:'10px 16px', textAlign:'center', borderBottom:'1px solid #f1f5f9' }}>
+                              <span style={{ fontWeight:800, color: d.hoc_vien>0?'#3b82f6':'#94a3b8', fontSize:15 }}>{d.hoc_vien}</span>
+                            </td>
+                            <td style={{ padding:'10px 16px', textAlign:'center', borderBottom:'1px solid #f1f5f9' }}>
+                              <span style={{ fontWeight:800, color: d.xe>0?'#10b981':'#94a3b8', fontSize:15 }}>{d.xe}</span>
+                            </td>
+                            <td style={{ padding:'10px 16px', textAlign:'center', borderBottom:'1px solid #f1f5f9' }}>
+                              <span style={{ fontWeight:800, color: d.lop_hoc>0?'#8b5cf6':'#94a3b8', fontSize:15 }}>{d.lop_hoc}</span>
+                            </td>
+                            <td style={{ padding:'10px 16px', borderBottom:'1px solid #f1f5f9' }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                                <div style={{ flex:1, background:'#f1f5f9', borderRadius:6, height:8, overflow:'hidden' }}>
+                                  <div style={{
+                                    height:'100%', borderRadius:6, background:d.color,
+                                    width:`${(d.hoc_vien/tongHV)*100}%`,
+                                    minWidth: d.hoc_vien>0 ? 4 : 0,
+                                    transition:'width .5s ease',
+                                  }}/>
+                                </div>
+                                <span style={{ fontSize:12, fontWeight:600, color:'#6b7280', minWidth:38, textAlign:'right' }}>
+                                  {((d.hoc_vien/tongHV)*100).toFixed(1)}%
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

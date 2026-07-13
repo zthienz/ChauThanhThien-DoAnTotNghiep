@@ -3,6 +3,7 @@ import axios from 'axios'
 import { Link } from 'react-router-dom'
 import SectionGioiThieu from './sections/SectionGioiThieu'
 import SectionKhoaHoc from './sections/SectionKhoaHoc'
+import SectionCapPhep from './sections/SectionCapPhep'
 import SectionLoaiBang from './sections/SectionLoaiBang'
 import SectionThoiGian from './sections/SectionThoiGian'
 import SectionThuTuc from './sections/SectionThuTuc'
@@ -46,9 +47,10 @@ const Home = () => {
       {/* ── CÁC SECTION NỘI DUNG ── */}
       <SectionGioiThieu />
       <SectionKhoaHoc khoaHocList={khoaHocList} />
+      <SectionCapPhep />
       <SectionLoaiBang />
-      <SectionThoiGian />
       <SectionThuTuc />
+      <SectionThoiGian />
       <SectionUuDai />
     </div>
   )

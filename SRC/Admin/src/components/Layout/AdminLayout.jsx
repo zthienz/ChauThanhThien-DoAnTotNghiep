@@ -54,7 +54,7 @@ const AdminLayout = () => {
       </div>
 
       {/* AI Assistant — floating, chỉ hiện với Admin */}
-      <AIAssistant />
+      {/* <AIAssistant /> */}
     </div>
   )
 }

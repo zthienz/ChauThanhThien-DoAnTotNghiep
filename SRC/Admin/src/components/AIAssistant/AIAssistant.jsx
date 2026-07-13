@@ -347,114 +347,92 @@ const executeTool = async (toolName, toolArgs, backendUrl, token) => {
 }
 
 // ════════════════════════════════════════════════════════════════
-// SYSTEM PROMPT — Ngắn gọn vì AI sẽ tự fetch data khi cần
+// SYSTEM PROMPT — Ngắn gọn để tiết kiệm token
 // ════════════════════════════════════════════════════════════════
 const buildSystemPrompt = (adminInfo) => {
-  // Tính toán các mốc thời gian thực tế ngay khi tạo prompt
   const now = new Date()
-
   const pad = (n) => String(n).padStart(2, '0')
-  const fmtDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-  const fmtDateVN = (d) => `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`
+  const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
 
-  const THU_VI = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy']
-  const thuHomNay = THU_VI[now.getDay()]
+  const THU = ['CN','T2','T3','T4','T5','T6','T7']
+  const dow = now.getDay()
+  const diffMon = dow === 0 ? -6 : 1 - dow
+  const mon = new Date(now); mon.setDate(now.getDate() + diffMon)
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6)
+  const monToi = new Date(mon); monToi.setDate(mon.getDate() + 7)
+  const sunToi = new Date(monToi); sunToi.setDate(monToi.getDate() + 6)
+  const monTruoc = new Date(mon); monTruoc.setDate(mon.getDate() - 7)
+  const sunTruoc = new Date(monTruoc); sunTruoc.setDate(monTruoc.getDate() + 6)
+  const dauThang = new Date(now.getFullYear(), now.getMonth(), 1)
+  const cuoiThang = new Date(now.getFullYear(), now.getMonth()+1, 0)
+  const tom = new Date(now); tom.setDate(now.getDate()+1)
+  const qua = new Date(now); qua.setDate(now.getDate()-1)
+  const y = now.getFullYear()
 
-  // Đầu tuần (Thứ Hai) và cuối tuần (Chủ Nhật) hiện tại
-  const dayOfWeek = now.getDay() // 0=CN, 1=T2...6=T7
-  const diffToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
-  const monNay = new Date(now); monNay.setDate(now.getDate() + diffToMon)
-  const cnNay  = new Date(monNay); cnNay.setDate(monNay.getDate() + 6)
+  // Hàm tính đầu/cuối tháng bất kỳ
+  const t1 = (m) => `${y}-${pad(m)}-01`
+  const t2 = (m) => `${y}-${pad(m)}-${pad(new Date(y, m, 0).getDate())}`
 
-  // Tuần tới
-  const monToi = new Date(monNay); monToi.setDate(monNay.getDate() + 7)
-  const cnToi  = new Date(monToi); cnToi.setDate(monToi.getDate() + 6)
+  return `Bạn là trợ lý AI Trung Tâm Lái Xe Sao Việt. Admin: ${adminInfo?.ho_ten || 'Admin'}.
 
-  // Tuần trước
-  const monTruoc = new Date(monNay); monTruoc.setDate(monNay.getDate() - 7)
-  const cnTruoc  = new Date(monTruoc); cnTruoc.setDate(monTruoc.getDate() + 6)
+NGÀY HIỆN TẠI: ${fmt(now)} (${THU[dow]})
+- Hôm qua: ${fmt(qua)} | Ngày mai: ${fmt(tom)}
+- Tuần này: ${fmt(mon)}→${fmt(sun)} | Tuần trước: ${fmt(monTruoc)}→${fmt(sunTruoc)} | Tuần tới: ${fmt(monToi)}→${fmt(sunToi)}
+- Tháng này: ${fmt(dauThang)}→${fmt(cuoiThang)} | Năm: ${y}
+- T1:${t1(1)}→${t2(1)} T2:${t1(2)}→${t2(2)} T3:${t1(3)}→${t2(3)} T4:${t1(4)}→${t2(4)} T5:${t1(5)}→${t2(5)} T6:${t1(6)}→${t2(6)}
+- T7:${t1(7)}→${t2(7)} T8:${t1(8)}→${t2(8)} T9:${t1(9)}→${t2(9)} T10:${t1(10)}→${t2(10)} T11:${t1(11)}→${t2(11)} T12:${t1(12)}→${t2(12)}
 
-  // Đầu/cuối tháng này
-  const dauThangNay = new Date(now.getFullYear(), now.getMonth(), 1)
-  const cuoiThangNay = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+NHIỆM VỤ: Hỗ trợ quản lý trung tâm lái xe & luật giao thông VN.
+NGUYÊN TẮC:
+- Hỏi về số liệu/dữ liệu → dùng tools lấy thực tế, KHÔNG bịa
+- Có thể gọi nhiều tools cùng lúc
+- Dùng ngày YYYY-MM-DD từ bảng trên, KHÔNG hỏi lại admin về ngày tháng
+- Nếu hỏi GV cụ thể → get_giang_vien trước lấy ID, rồi dùng ai_lich_day_giang_vien
+- Câu hỏi ngoài phạm vi (thời tiết, nấu ăn...) → từ chối lịch sự
+- Trả lời tiếng Việt, ngắn gọn, dùng emoji phù hợp`
+}
 
-  // Ngày mai, hôm qua
-  const ngayMai = new Date(now); ngayMai.setDate(now.getDate() + 1)
-  const homQua  = new Date(now); homQua.setDate(now.getDate() - 1)
+// ════════════════════════════════════════════════════════════════
+// HELPERS — phải khai báo trước component
+// ════════════════════════════════════════════════════════════════
 
-  // Đầu năm / cuối năm
-  const dauNam = new Date(now.getFullYear(), 0, 1)
-  const cuoiNam = new Date(now.getFullYear(), 11, 31)
+// Label hiển thị khi tool đang chạy
+const TOOL_LABEL = {
+  get_dashboard: 'thống kê tổng quan',
+  get_dashboard_extra: 'dữ liệu bổ sung',
+  get_ho_so: 'hồ sơ học viên',
+  get_lop_hoc: 'lớp học',
+  get_lich_hoc: 'lịch học',
+  get_giang_vien: 'giảng viên',
+  get_xe: 'danh sách xe',
+  get_bao_loi_xe: 'báo lỗi xe',
+  get_hoc_phi: 'học phí',
+  get_lich_thi: 'lịch thi',
+  get_khoa_hoc: 'khóa học',
+  get_cap_bang: 'cấp bằng',
+  get_bai_thi: 'cấu hình bài thi',
+  get_lien_he: 'liên hệ',
+  get_hoat_dong_gan_day: 'hoạt động gần đây',
+  get_chart_doanh_thu: 'doanh thu',
+  get_chart_hoc_vien: 'thống kê học viên',
+  get_chart_ket_qua_thi: 'kết quả thi',
+  get_phi_thi_lai: 'phí thi lại',
+  ai_doanh_thu_theo_khoang: 'thống kê doanh thu',
+  ai_hoc_vien_theo_khoang: 'thống kê học viên',
+  ai_lich_day_giang_vien: 'lịch dạy giảng viên',
+  ai_goi_y_lich_day: 'gợi ý khung giờ trống',
+}
 
-  // Helper tính đầu/cuối tháng bất kỳ trong năm hiện tại
-  const dauThang = (m) => `${now.getFullYear()}-${pad(m)}-01`
-  const cuoiThangM = (m) => {
-    const lastDay = new Date(now.getFullYear(), m, 0).getDate()
-    return `${now.getFullYear()}-${pad(m)}-${pad(lastDay)}`
+// Giới hạn kích thước data gửi lại cho Gemini để tiết kiệm token
+const truncateData = (data) => {
+  if (!data) return data
+  const str = JSON.stringify(data)
+  if (str.length <= 80000) return data
+  if (Array.isArray(data)) return data.slice(0, 50)
+  if (data.data && Array.isArray(data.data)) {
+    return { ...data, data: data.data.slice(0, 50), _truncated: true }
   }
-
-  return `Bạn là trợ lý AI của Trung Tâm Lái Xe Sao Việt. Admin: ${adminInfo?.ho_ten || 'Admin'}.
-
-══ THỜI GIAN THỰC TẾ HIỆN TẠI ══
-- Hôm nay: ${fmtDateVN(now)} (${fmtDate(now)}) — ${thuHomNay}
-- Hôm qua: ${fmtDateVN(homQua)} (${fmtDate(homQua)})
-- Ngày mai: ${fmtDateVN(ngayMai)} (${fmtDate(ngayMai)})
-- Tuần này:  ${fmtDate(monNay)} → ${fmtDate(cnNay)}  (${fmtDateVN(monNay)} – ${fmtDateVN(cnNay)})
-- Tuần trước: ${fmtDate(monTruoc)} → ${fmtDate(cnTruoc)}
-- Tuần tới:  ${fmtDate(monToi)} → ${fmtDate(cnToi)}
-- Tháng này: ${fmtDate(dauThangNay)} → ${fmtDate(cuoiThangNay)}
-- Tháng/Năm hiện tại: ${pad(now.getMonth() + 1)}/${now.getFullYear()}
-- Năm hiện tại: ${now.getFullYear()}
-
-KHI ADMIN NÓI VỀ THÁNG CỤ THỂ:
-- "tháng 7" / "tháng 7 này" → tu_ngay=${dauThang(7)}, den_ngay=${cuoiThangM(7)}
-- "tháng 1" → tu_ngay=${dauThang(1)}, den_ngay=${cuoiThangM(1)}
-- "tháng 2" → tu_ngay=${dauThang(2)}, den_ngay=${cuoiThangM(2)}
-- "tháng 3" → tu_ngay=${dauThang(3)}, den_ngay=${cuoiThangM(3)}
-- "tháng 4" → tu_ngay=${dauThang(4)}, den_ngay=${cuoiThangM(4)}
-- "tháng 5" → tu_ngay=${dauThang(5)}, den_ngay=${cuoiThangM(5)}
-- "tháng 6" → tu_ngay=${dauThang(6)}, den_ngay=${cuoiThangM(6)}
-- "tháng 8" → tu_ngay=${dauThang(8)}, den_ngay=${cuoiThangM(8)}
-- "tháng 9" → tu_ngay=${dauThang(9)}, den_ngay=${cuoiThangM(9)}
-- "tháng 10" → tu_ngay=${dauThang(10)}, den_ngay=${cuoiThangM(10)}
-- "tháng 11" → tu_ngay=${dauThang(11)}, den_ngay=${cuoiThangM(11)}
-- "tháng 12" → tu_ngay=${dauThang(12)}, den_ngay=${cuoiThangM(12)}
-- "năm nay" / "từ đầu năm" → tu_ngay=${fmtDate(dauNam)}, den_ngay=${fmtDate(cuoiNam)}
-- "tháng này" → dùng ${fmtDate(dauThangNay)} → ${fmtDate(cuoiThangNay)}
-- "hôm nay/hôm qua/ngày mai/tuần này/tuần trước/tuần tới" → dùng các ngày YYYY-MM-DD ở trên, KHÔNG hỏi lại admin.
-
-NHIỆM VỤ: Hỗ trợ quản lý trung tâm lái xe và giải đáp luật/quy trình thi bằng lái Việt Nam.
-
-CÁCH HOẠT ĐỘNG:
-- Khi admin hỏi về số liệu, dữ liệu hệ thống → bắt buộc dùng tools để lấy dữ liệu THỰC TẾ, không tự bịa
-- Có thể gọi nhiều tools cùng lúc nếu câu hỏi cần nhiều loại dữ liệu
-- Sau khi có dữ liệu → phân tích, tổng hợp, đưa ra nhận xét/gợi ý hữu ích
-- Câu hỏi về luật giao thông, quy trình thi bằng → trả lời trực tiếp không cần tool
-
-TOOLS ĐẶC BIỆT CHO THỐNG KÊ LINH HOẠT:
-- ai_doanh_thu_theo_khoang: Khi admin hỏi doanh thu từ ngày X đến ngày Y, hoặc trong tháng/quý/năm bất kỳ
-- ai_hoc_vien_theo_khoang: Khi hỏi "có bao nhiêu học viên đăng ký", "học viên nộp hồ sơ trong tháng X/tuần X/khoảng thời gian nào đó", "thống kê học viên mới". Trả về tong_dang_ky là số hồ sơ nộp mới trong khoảng đó.
-- ai_lich_day_giang_vien: Khi hỏi lịch dạy của một GV, ngày nào GV rảnh, khoảng trống để xếp lịch
-- ai_goi_y_lich_day: Khi hỏi GV có thể dạy vào khung giờ cụ thể không, hoặc cần gợi ý khung giờ trống
-
-XỬ LÝ YÊU CẦU VỀ GIẢNG VIÊN:
-- Nếu admin hỏi lịch của "GV X" → dùng get_giang_vien trước để lấy ID, rồi dùng ai_lich_day_giang_vien với tu_ngay/den_ngay đã biết ở trên
-- Nếu admin nói "tuần này" → tu_ngay=${fmtDate(monNay)}, den_ngay=${fmtDate(cnNay)} — dùng ngay, không hỏi lại
-- Nếu admin nói "tuần tới" → tu_ngay=${fmtDate(monToi)}, den_ngay=${fmtDate(cnToi)} — dùng ngay, không hỏi lại
-
-XỬ LÝ YÊU CẦU VỀ HỌC PHÍ CỦA HỌC VIÊN CỤ THỂ:
-- Khi admin hỏi "học viên [Tên] đã đóng bao nhiêu học phí", "học viên [Tên] còn nợ không" → dùng get_hoc_phi với params search=[Tên học viên]
-- Dùng đúng tên mà admin cung cấp, không tự thêm/bớt từ
-- Sau khi có dữ liệu → tổng hợp tổng số tiền đã đóng, số tiền còn nợ (nếu có), phương thức thanh toán, ngày đóng gần nhất
-- Luôn gợi ý cụ thể các khung giờ trống khi phân tích lịch dạy
-
-QUY TẮC TRẢ LỜI:
-- Tiếng Việt, ngắn gọn, dùng emoji phù hợp
-- Dùng số liệu thực từ tools, không bịa số
-- Với phân tích lịch dạy: liệt kê rõ ngày/giờ bận và ngày/giờ trống
-- Với thống kê doanh thu/học viên: so sánh với kỳ trước nếu có thể, đưa ra nhận xét xu hướng
-- Nếu dữ liệu trống/lỗi → báo admin kiểm tra trực tiếp trên trang tương ứng
-- Câu hỏi hoàn toàn ngoài phạm vi (thời tiết, nấu ăn...) → từ chối lịch sự`
+  return data
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -480,7 +458,7 @@ const AIAssistant = () => {
     const sysPrompt = buildSystemPrompt(adminInfo)
 
     sessionRef.current = ai.chats.create({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.0-flash',
       config: {
         systemInstruction: sysPrompt,
         maxOutputTokens: 800,
@@ -527,8 +505,27 @@ const AIAssistant = () => {
     setLoading(true)
     setToolStatus('')
 
+    // Helper: gửi message với retry tự động khi bị 429
+    const sendWithRetry = async (payload, maxRetries = 2) => {
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          return await sessionRef.current.sendMessage(payload)
+        } catch (err) {
+          const msg = err?.message || ''
+          const is429 = msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')
+          if (is429 && attempt < maxRetries) {
+            const waitSec = (attempt + 1) * 8
+            setToolStatus(`⏳ Hệ thống AI bận, tự động thử lại sau ${waitSec}s... (${attempt + 1}/${maxRetries})`)
+            await new Promise(r => setTimeout(r, waitSec * 1000))
+            continue
+          }
+          throw err
+        }
+      }
+    }
+
     try {
-      let response = await sessionRef.current.sendMessage({ message: text })
+      let response = await sendWithRetry({ message: text })
 
       // Vòng lặp xử lý function calls — Gemini có thể gọi nhiều lần
       while (response.functionCalls && response.functionCalls.length > 0) {
@@ -554,7 +551,7 @@ const AIAssistant = () => {
 
         // Gửi kết quả tools trở lại cho Gemini
         // Mỗi kết quả là 1 Part với functionResponse
-        response = await sessionRef.current.sendMessage({
+        response = await sendWithRetry({
           message: results.map(r => ({
             functionResponse: {
               name: r.name,
@@ -575,13 +572,13 @@ const AIAssistant = () => {
       let friendly
 
       if (msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
-        friendly = '⚠️ Hệ thống AI đang bận, vui lòng thử lại sau ít phút.'
+        friendly = '⚠️ API Gemini đã hết giới hạn miễn phí hôm nay (20 req/ngày với gemini-2.5-flash hoặc quota bị vượt).\n\nVui lòng thử lại vào ngày mai, hoặc liên hệ admin để nâng cấp API key lên gói trả phí tại: https://ai.google.dev'
       } else if (msg.includes('503') || msg.includes('UNAVAILABLE')) {
         friendly = '⚠️ Máy chủ AI đang quá tải. Vui lòng thử lại sau.'
-      } else if (msg.includes('API_KEY') || msg.includes('API key')) {
-        friendly = '⚠️ Lỗi xác thực API. Liên hệ quản trị viên hệ thống.'
+      } else if (msg.includes('API_KEY') || msg.includes('API key') || msg.includes('400')) {
+        friendly = '⚠️ API key không hợp lệ hoặc bị thu hồi. Liên hệ quản trị viên hệ thống.'
       } else {
-        friendly = '⚠️ Không lấy được phản hồi. Vui lòng thử lại.'
+        friendly = `⚠️ Không lấy được phản hồi từ AI. Lỗi: ${msg || 'Không xác định'}. Vui lòng thử lại.`
       }
 
       setMessages(prev => [...prev, { role: 'ai', text: friendly, time: new Date() }])
@@ -730,52 +727,6 @@ const AIAssistant = () => {
       )}
     </>
   )
-}
-
-// ════════════════════════════════════════════════════════════════
-// HELPERS
-// ════════════════════════════════════════════════════════════════
-
-// Label hiển thị khi tool đang chạy
-const TOOL_LABEL = {
-  get_dashboard: 'thống kê tổng quan',
-  get_dashboard_extra: 'dữ liệu bổ sung',
-  get_ho_so: 'hồ sơ học viên',
-  get_lop_hoc: 'lớp học',
-  get_lich_hoc: 'lịch học',
-  get_giang_vien: 'giảng viên',
-  get_xe: 'danh sách xe',
-  get_bao_loi_xe: 'báo lỗi xe',
-  get_hoc_phi: 'học phí',
-  get_lich_thi: 'lịch thi',
-  get_khoa_hoc: 'khóa học',
-  get_cap_bang: 'cấp bằng',
-  get_bai_thi: 'cấu hình bài thi',
-  get_lien_he: 'liên hệ',
-  get_hoat_dong_gan_day: 'hoạt động gần đây',
-  get_chart_doanh_thu: 'doanh thu',
-  get_chart_hoc_vien: 'thống kê học viên',
-  get_chart_ket_qua_thi: 'kết quả thi',
-  get_phi_thi_lai: 'phí thi lại',
-  ai_doanh_thu_theo_khoang: 'thống kê doanh thu',
-  ai_hoc_vien_theo_khoang: 'thống kê học viên',
-  ai_lich_day_giang_vien: 'lịch dạy giảng viên',
-  ai_goi_y_lich_day: 'gợi ý khung giờ trống',
-}
-
-// Giới hạn kích thước data gửi lại cho Gemini để tiết kiệm token
-const truncateData = (data) => {
-  if (!data) return data
-  const str = JSON.stringify(data)
-  // ~80KB ký tự là an toàn cho 1 tool response
-  if (str.length <= 80000) return data
-
-  // Nếu là array — cắt còn 50 phần tử đầu
-  if (Array.isArray(data)) return data.slice(0, 50)
-  if (data.data && Array.isArray(data.data)) {
-    return { ...data, data: data.data.slice(0, 50), _truncated: true }
-  }
-  return data
 }
 
 export default AIAssistant
